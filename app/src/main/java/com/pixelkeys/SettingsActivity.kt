@@ -53,6 +53,21 @@ class SettingsActivity : Activity() {
             root.addView(b)
         }
 
+        fun choose(key: String, title: String, names: List<String>, def: Int) {
+            val b = Button(this)
+            b.text = title + ": " + names[prefs.getInt(key, def)]
+            b.setOnClickListener {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setItems(names.toTypedArray()) { _, which ->
+                        prefs.edit().putInt(key, which).apply()
+                        b.text = title + ": " + names[which]
+                    }
+                    .show()
+            }
+            root.addView(b)
+        }
+
         label("Pixel Keys", 28f, true)
         label("Клавиатура в стиле Pixel: русская и английская раскладки, эмодзи, история буфера обмена с закреплением.", 15f)
 
@@ -68,7 +83,7 @@ class SettingsActivity : Activity() {
         root.addView(field)
 
         label("Настройки (применяются при следующем открытии клавиатуры)", 13f)
-        cycle("theme", "Тема", listOf("Авто", "Светлая", "Тёмная"), 0)
+        choose("theme", "Тема", listOf("Авто", "Светлая", "Тёмная", "Серая", "Синяя", "Бирюзовая", "Зелёная", "Фиолетовая", "Розовая", "Оранжевая"), 0)
         cycle("height", "Высота клавиш", listOf("Низкая", "Средняя", "Высокая"), 1)
 
         btn("Очистить историю буфера") {

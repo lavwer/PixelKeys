@@ -39,6 +39,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     var repeatable: Boolean = false
     var preview: Boolean = false      // показывать увеличенную букву над клавишей
     var haptic: Boolean = true
+    var scallop: Boolean = false      // форма «волнистый квадрат» (бугорки по краям)
     var onTap: () -> Unit = {}
     var onLong: (() -> Unit)? = null
 
@@ -80,7 +81,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
                 kind == SPECIAL -> pal.special
                 else -> pal.key
             }
-            canvas.drawRoundRect(rect, r, r, bgPaint)
+            if (scallop) drawScallop(canvas, rect, bgPaint) else canvas.drawRoundRect(rect, r, r, bgPaint)
         }
 
         val color = if (highlighted) pal.onAction else pal.text
@@ -105,6 +106,28 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
             hp.color = pal.hint
             hp.textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 10f, resources.displayMetrics)
             canvas.drawText(h, width - m - 6 * d, m + 14 * d, hp)
+        }
+    }
+
+    /** Волнистый квадрат: круги по периметру + сплошная середина (как на образце). */
+    private fun drawScallop(c: Canvas, rc: RectF, p: Paint) {
+        val w = rc.width()
+        val h = rc.height()
+        val nh = 4                                   // бугорков по высоте
+        val r = h / (2f + 1.76f * (nh - 1))          // радиус бугорка
+        val nw = maxOf(3, Math.round((w / r - 2f) / 1.76f) + 1)   // бугорков по ширине
+        val sx = (w - 2 * r) / (nw - 1)
+        val sy = (h - 2 * r) / (nh - 1)
+        c.drawRect(rc.left + r, rc.top + r, rc.right - r, rc.bottom - r, p)
+        for (i in 0 until nw) {
+            val x = rc.left + r + i * sx
+            c.drawCircle(x, rc.top + r, r, p)
+            c.drawCircle(x, rc.bottom - r, r, p)
+        }
+        for (j in 1 until nh - 1) {
+            val y = rc.top + r + j * sy
+            c.drawCircle(rc.left + r, y, r, p)
+            c.drawCircle(rc.right - r, y, r, p)
         }
     }
 

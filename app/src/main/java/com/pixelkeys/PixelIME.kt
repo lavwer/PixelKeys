@@ -263,6 +263,7 @@ class PixelIME : InputMethodService() {
 
     private fun backKey(w: Float) = Key(this, pal, Key.SPECIAL).apply {
         weight = w
+        scallop = true
         icon = ico(R.drawable.ic_backspace)
         repeatable = true
         onTap = { backspace() }
@@ -322,6 +323,7 @@ class PixelIME : InputMethodService() {
         }
         val comma = charKey(",", false, 22f, Key.SPECIAL)
         val globe = Key(this, pal, Key.SPECIAL).apply {
+            scallop = true
             icon = ico(R.drawable.ic_globe)
             onTap = {
                 lang = 1 - lang
@@ -338,6 +340,7 @@ class PixelIME : InputMethodService() {
         }
         val period = charKey(".", false, 22f, Key.SPECIAL)
         val ek = Key(this, pal, Key.ACTION).apply {
+            scallop = true
             weight = 1.5f
             textSp = 14f
             onTap = { enter() }
