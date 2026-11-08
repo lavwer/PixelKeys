@@ -23,3 +23,7 @@ Build → Build APK(s). Файл: app/build/outputs/apk/debug/app-debug.apk
 1. На GitHub: Add file → Upload files, перетащить содержимое новой распакованной папки (app, build.gradle.kts и т.д.), Commit changes.
 2. Вкладка Actions → дождаться зелёной галочки → скачать PixelKeys-apk.
 3. Установить новый APK поверх старого (удалять не нужно, если ключ подписи в проекте не менялся).
+
+## Словари T9
+words_ru.txt и words_en.txt собраны из частотных списков библиотеки wordfreq (данные: CC BY-SA 4.0,
+https://github.com/rspeer/wordfreq). Словари работают офлайн, внутри приложения.
