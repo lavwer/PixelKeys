@@ -18,3 +18,8 @@ Build → Build APK(s). Файл: app/build/outputs/apk/debug/app-debug.apk
 - История буфера лежит в закрытой памяти приложения, allowBackup=false.
 - Записи живут 24 часа (ClipStore.TTL_MS), закреплённые остаются.
 - Секретные записи от менеджеров паролей (флаг IS_SENSITIVE) не сохраняются.
+
+## Обновление
+1. На GitHub: Add file → Upload files, перетащить содержимое новой распакованной папки (app, build.gradle.kts и т.д.), Commit changes.
+2. Вкладка Actions → дождаться зелёной галочки → скачать PixelKeys-apk.
+3. Установить новый APK поверх старого (удалять не нужно, если ключ подписи в проекте не менялся).

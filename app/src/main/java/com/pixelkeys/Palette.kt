@@ -6,9 +6,14 @@ import android.graphics.Color
 import android.os.Build
 
 /** Цвета в стиле Pixel: на Android 12+ берутся из обоев (Material You), иначе — запасная палитра. */
-class Palette(private val ctx: Context) {
-    val night = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-        Configuration.UI_MODE_NIGHT_YES
+class Palette(private val ctx: Context, mode: Int = 0) {
+    // mode: 0 = как в системе, 1 = светлая, 2 = тёмная
+    val night = when (mode) {
+        1 -> false
+        2 -> true
+        else -> (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+    }
     private val dyn = Build.VERSION.SDK_INT >= 31
 
     private fun c(id: Int) = ctx.getColor(id)

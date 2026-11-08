@@ -32,6 +32,16 @@ class PixelIME : InputMethodService() {
     // Долгое нажатие: показывает мелкую подсказку в углу клавиши и вводит этот символ
     private val ALT = mapOf("е" to "ё", "ь" to "ъ", "." to "?", "," to "!")
 
+    // Эмодзи по категориям (первый символ категории служит значком вкладки)
+    private val emojiCats = listOf(
+        "😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🤭 🤫 🤥 😶 😐 😑 😬 🙄 😯 😦 😧 😮 😲 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕",
+        "👍 👎 👌 ✌️ 🤞 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ ✋ 🤚 🖐 🖖 👋 ✊ 👊 🤛 🤜 👏 🙌 👐 🤲 🤝 🙏 ✍️ 💪 👀 👅 👄 🧠 👶 👦 👧 👨 👩 🧑 👴 👵 🙋 🤷 🤦 💁 🙆 🙅 💃 🕺",
+        "❤️ 🧡 💛 💚 💙 💜 🖤 🤎 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 💯 💢 💥 💫 💦 💨 🔥 ✨ ⭐ 🌟 ⚡ ✅ ❌ ❓ ❗ ⚠️ 🚫 ♻️ 🔞 ➕ ➖ ➗ ✖️ 💲",
+        "🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🙈 🙉 🙊 🐔 🐧 🐦 🐤 🦆 🦅 🦉 🦇 🐺 🐗 🐴 🦄 🐝 🐛 🦋 🐌 🐞 🐜 🐢 🐍 🐙 🦑 🦀 🐠 🐟 🐬 🐳 🦈 🐊 🌵 🌲 🌳 🌴 🌱 🌿 🍀 🍁 🍂 🌸 🌹 🌻 🌼 🌞 🌙 🌈 ☁️ ❄️ 🌊",
+        "🍏 🍎 🍐 🍊 🍋 🍌 🍉 🍇 🍓 🍒 🍑 🍍 🥝 🍅 🥑 🥦 🥕 🌽 🍞 🧀 🍳 🥞 🥓 🍔 🍟 🍕 🌭 🥪 🌮 🌯 🍝 🍜 🍲 🍣 🍤 🍦 🍩 🍪 🎂 🍰 🍫 🍬 🍭 ☕ 🍵 🥛 🍺 🍻 🥂 🍷 🍸 🍹",
+        "⚽ 🏀 🏈 ⚾ 🎾 🏐 🎱 🏓 🥊 🎯 🎮 🎲 🎵 🎶 🎤 🎧 🎸 🎹 🎬 📷 📱 💻 ⌨️ 🖥 🎁 🎉 🎊 🏆 🥇 🚗 🚕 🚌 🚓 🚑 ✈️ 🚀 🚲 🏠 🏢 ⏰ 📌 📎 ✏️ 📚 💡 🔑 🔒 💰 💳"
+    ).map { it.split(" ") }
+
     private lateinit var pal: Palette
     private lateinit var store: ClipStore
     private lateinit var cm: ClipboardManager
@@ -41,12 +51,20 @@ class PixelIME : InputMethodService() {
     private var page = 0      // 0 = буквы, 1 = символы 1, 2 = символы 2
     private var shift = 0     // 0 = выкл, 1 = на одну букву, 2 = Caps Lock
     private var lastShiftTap = 0L
-    private var clipOpen = false
+    private var lastSpace = 0L
+    private var mode = 0      // 0 = клавиши, 1 = буфер, 2 = эмодзи
+    private var emojiCat = 0
+    private var themeMode = 0
+    private var heightMode = 1
 
     private var keysBox: LinearLayout? = null
     private var clipScroll: ScrollView? = null
     private var clipList: LinearLayout? = null
+    private var emojiBox: LinearLayout? = null
+    private var emojiTop: LinearLayout? = null
+    private var emojiGrid: LinearLayout? = null
     private var clipBtn: Key? = null
+    private var emojiBtn: Key? = null
     private var clearBtn: Key? = null
     private var titleView: TextView? = null
     private var shiftKey: Key? = null
@@ -57,7 +75,8 @@ class PixelIME : InputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
-        pal = Palette(this)
+        loadPrefs()
+        pal = Palette(this, themeMode)
         store = ClipStore(this)
         cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.addPrimaryClipChangedListener(clipListener)
@@ -68,16 +87,29 @@ class PixelIME : InputMethodService() {
         super.onDestroy()
     }
 
+    private fun loadPrefs() {
+        val ui = getSharedPreferences("ui", Context.MODE_PRIVATE)
+        themeMode = ui.getInt("theme", 0)
+        heightMode = ui.getInt("height", 1)
+    }
+
     override fun onEvaluateFullscreenMode() = false
 
     override fun onCreateInputView(): View {
-        pal = Palette(this)
+        loadPrefs()
+        pal = Palette(this, themeMode)
         return buildRoot()
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        if (clipOpen) toggleClip()
+        val ui = getSharedPreferences("ui", Context.MODE_PRIVATE)
+        if (ui.getInt("theme", 0) != themeMode || ui.getInt("height", 1) != heightMode) {
+            loadPrefs()
+            pal = Palette(this, themeMode)
+            setInputView(buildRoot())
+        }
+        if (mode != 0) setMode(0)
         val cls = (info?.inputType ?: 0) and InputType.TYPE_MASK_CLASS
         page = if (cls == InputType.TYPE_CLASS_NUMBER || cls == InputType.TYPE_CLASS_PHONE) 1 else 0
         shift = 0
@@ -102,29 +134,43 @@ class PixelIME : InputMethodService() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun rowH() =
-        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) dp(40) else dp(46)
+    private fun rowH(): Int {
+        val base = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 40 else 46
+        val scale = when (heightMode) {
+            0 -> 0.88f
+            2 -> 1.15f
+            else -> 1f
+        }
+        return dp((base * scale).toInt())
+    }
 
     private fun ico(id: Int): Drawable? = getDrawable(id)?.mutate()
 
     private fun buildRoot(): View {
-        clipOpen = false
+        mode = 0
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
         root.setBackgroundColor(pal.bg)
         root.setPadding(dp(4), dp(4), dp(4), dp(8))
 
-        // верхняя панель: кнопка буфера, заголовок, «Очистить»
+        // верхняя панель: буфер, эмодзи, заголовок, «Очистить»
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.CENTER_VERTICAL
 
         val cb = Key(this, pal, Key.FLAT).apply {
             icon = ico(R.drawable.ic_clipboard)
-            onTap = { toggleClip() }
+            onTap = { setMode(1) }
         }
         clipBtn = cb
         bar.addView(cb, LinearLayout.LayoutParams(dp(52), dp(40)))
+
+        val emb = Key(this, pal, Key.FLAT).apply {
+            icon = ico(R.drawable.ic_emoji)
+            onTap = { setMode(2) }
+        }
+        emojiBtn = emb
+        bar.addView(emb, LinearLayout.LayoutParams(dp(52), dp(40)))
 
         val tv = TextView(this)
         tv.setTextColor(pal.text)
@@ -146,7 +192,7 @@ class PixelIME : InputMethodService() {
         clearBtn = cl
         bar.addView(cl, LinearLayout.LayoutParams(dp(96), dp(40)))
 
-        // область под панелью: либо клавиши, либо буфер
+        // область под панелью: клавиши, буфер или эмодзи
         val content = FrameLayout(this)
         val kb = LinearLayout(this)
         kb.orientation = LinearLayout.VERTICAL
@@ -161,8 +207,25 @@ class PixelIME : InputMethodService() {
         clipScroll = sv
         clipList = list
 
+        val ebox = LinearLayout(this)
+        ebox.orientation = LinearLayout.VERTICAL
+        ebox.visibility = View.GONE
+        val etop = LinearLayout(this)
+        etop.orientation = LinearLayout.HORIZONTAL
+        val esv = ScrollView(this)
+        esv.isVerticalScrollBarEnabled = false
+        val egrid = LinearLayout(this)
+        egrid.orientation = LinearLayout.VERTICAL
+        esv.addView(egrid)
+        ebox.addView(etop, LinearLayout.LayoutParams(MATCH, rowH()))
+        ebox.addView(esv, LinearLayout.LayoutParams(MATCH, 0, 1f))
+        emojiBox = ebox
+        emojiTop = etop
+        emojiGrid = egrid
+
         content.addView(kb, FrameLayout.LayoutParams(MATCH, MATCH))
         content.addView(sv, FrameLayout.LayoutParams(MATCH, MATCH))
+        content.addView(ebox, FrameLayout.LayoutParams(MATCH, MATCH))
 
         root.addView(bar, LinearLayout.LayoutParams(MATCH, dp(40)))
         root.addView(content, LinearLayout.LayoutParams(MATCH, rowH() * 5))
@@ -186,6 +249,7 @@ class PixelIME : InputMethodService() {
         val k = Key(this, pal, kind)
         k.textSp = sp
         k.tag = ch
+        k.preview = true
         k.label = if (letter) shifted(ch) else ch
         val alt = ALT[ch]
         if (alt != null) {
@@ -285,12 +349,101 @@ class PixelIME : InputMethodService() {
         updateEnter()
     }
 
+    // ---------- панели: буфер и эмодзи ----------
+
+    private fun setMode(m: Int) {
+        mode = if (mode == m) 0 else m   // повторное нажатие закрывает панель
+        keysBox?.visibility = if (mode == 0) View.VISIBLE else View.GONE
+        clipScroll?.visibility = if (mode == 1) View.VISIBLE else View.GONE
+        emojiBox?.visibility = if (mode == 2) View.VISIBLE else View.GONE
+        clipBtn?.active = mode == 1
+        emojiBtn?.active = mode == 2
+        clearBtn?.visibility = if (mode == 1) View.VISIBLE else View.GONE
+        titleView?.text = when (mode) {
+            1 -> "Буфер обмена"
+            2 -> "Эмодзи"
+            else -> ""
+        }
+        if (mode == 1) refreshClips()
+        if (mode == 2) renderEmoji()
+    }
+
+    private fun renderEmoji() {
+        val top = emojiTop ?: return
+        val grid = emojiGrid ?: return
+        top.removeAllViews()
+        grid.removeAllViews()
+
+        val back = Key(this, pal, Key.SPECIAL).apply {
+            weight = 1.4f
+            textSp = 14f
+            label = if (lang == 0) "АБВ" else "ABC"
+            onTap = { setMode(0) }
+        }
+        top.addView(back, LinearLayout.LayoutParams(0, MATCH, back.weight))
+        for (i in emojiCats.indices) {
+            val tab = Key(this, pal, Key.FLAT).apply {
+                textSp = 20f
+                haptic = false
+                label = emojiCats[i][0]
+                active = i == emojiCat
+                onTap = {
+                    emojiCat = i
+                    renderEmoji()
+                }
+            }
+            top.addView(tab, LinearLayout.LayoutParams(0, MATCH, 1f))
+        }
+        val del = backKey(1.4f)
+        top.addView(del, LinearLayout.LayoutParams(0, MATCH, del.weight))
+
+        val items = emojiCats[emojiCat]
+        val perRow = 8
+        var i = 0
+        while (i < items.size) {
+            val row = LinearLayout(this)
+            row.orientation = LinearLayout.HORIZONTAL
+            val end = minOf(i + perRow, items.size)
+            for (j in i until end) {
+                val e = items[j]
+                val k = Key(this, pal, Key.FLAT).apply {
+                    textSp = 24f
+                    label = e
+                    haptic = false
+                    onTap = { currentInputConnection?.commitText(e, 1) }
+                }
+                row.addView(k, LinearLayout.LayoutParams(0, MATCH, 1f))
+            }
+            val missing = perRow - (end - i)
+            if (missing > 0) row.addView(View(this), LinearLayout.LayoutParams(0, MATCH, missing.toFloat()))
+            grid.addView(row, LinearLayout.LayoutParams(MATCH, rowH()))
+            i += perRow
+        }
+    }
+
     // ---------- ввод ----------
 
     private fun shifted(s: String) = if (shift > 0) s.uppercase() else s
 
     private fun type(s: String) {
-        currentInputConnection?.commitText(s, 1)
+        val ic = currentInputConnection
+        if (ic == null) return
+        if (s == " ") {
+            // двойной пробел после слова = точка и пробел
+            val now = System.currentTimeMillis()
+            if (now - lastSpace < 500) {
+                val b = ic.getTextBeforeCursor(2, 0)
+                if (b != null && b.length == 2 && b[1] == ' ' && b[0].isLetterOrDigit()) {
+                    ic.deleteSurroundingText(1, 0)
+                    ic.commitText(". ", 1)
+                    lastSpace = 0L
+                    afterInput()
+                    return
+                }
+            }
+            lastSpace = now
+        }
+        ic.commitText(s, 1)
         afterInput()
     }
 
@@ -389,19 +542,9 @@ class PixelIME : InputMethodService() {
             val text = clip.getItemAt(0).coerceToText(this)?.toString() ?: return
             if (text.isBlank()) return
             store.add(text)
-            if (clipOpen) refreshClips()
+            if (mode == 1) refreshClips()
         } catch (e: Exception) {
         }
-    }
-
-    private fun toggleClip() {
-        clipOpen = !clipOpen
-        keysBox?.visibility = if (clipOpen) View.GONE else View.VISIBLE
-        clipScroll?.visibility = if (clipOpen) View.VISIBLE else View.GONE
-        clipBtn?.active = clipOpen
-        clearBtn?.visibility = if (clipOpen) View.VISIBLE else View.GONE
-        titleView?.text = if (clipOpen) "Буфер обмена" else ""
-        if (clipOpen) refreshClips()
     }
 
     private fun refreshClips() {
@@ -445,7 +588,7 @@ class PixelIME : InputMethodService() {
         row.background = bg
         row.setOnClickListener {
             currentInputConnection?.commitText(item.text, 1)
-            toggleClip()
+            setMode(0)
             afterInput()
         }
 

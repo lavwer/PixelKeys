@@ -5,6 +5,15 @@ plugins {
 
 android {
     namespace = "com.pixelkeys"
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     compileSdk = 34
 
     defaultConfig {

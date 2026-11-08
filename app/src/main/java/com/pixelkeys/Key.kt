@@ -5,14 +5,18 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.widget.PopupWindow
+import android.widget.TextView
 
-/** Одна клавиша: сама рисует себя, ловит нажатие, долгое нажатие и автоповтор. */
+/** Одна клавиша: сама рисует себя, ловит нажатие, долгое нажатие, автоповтор и показывает увеличенную букву. */
 class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : View(ctx) {
 
     companion object {
@@ -33,6 +37,8 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     var weight: Float = 1f
     var textSp: Float = 22f
     var repeatable: Boolean = false
+    var preview: Boolean = false      // показывать увеличенную букву над клавишей
+    var haptic: Boolean = true
     var onTap: () -> Unit = {}
     var onLong: (() -> Unit)? = null
 
@@ -44,10 +50,14 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     private val fg = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val hp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.RIGHT }
     private val ui = Handler(Looper.getMainLooper())
+    private var popup: PopupWindow? = null
+    private var bubble: TextView? = null
 
     private val longRun = Runnable {
         longDone = true
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        val h = hint
+        if (h != null) bubble?.text = h
         onLong?.invoke()
     }
     private val repRun = object : Runnable {
@@ -98,13 +108,66 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
         }
     }
 
+    private fun showBubble() {
+        val text = label
+        if (!preview || text.isEmpty()) return
+        try {
+            var p = popup
+            if (p == null) {
+                val tv = TextView(context)
+                tv.gravity = Gravity.CENTER
+                tv.textSize = 30f
+                tv.setTextColor(pal.text)
+                val bg = GradientDrawable()
+                bg.setColor(pal.key)
+                bg.setStroke(d.toInt().coerceAtLeast(1), pal.pressed)
+                bg.cornerRadius = 16f * d
+                tv.background = bg
+                bubble = tv
+                p = PopupWindow(tv, (width + 14 * d).toInt(), (68 * d).toInt())
+                p.isTouchable = false
+                p.isFocusable = false
+                p.isClippingEnabled = false
+                p.elevation = 8f * d
+                p.inputMethodMode = PopupWindow.INPUT_METHOD_NOT_NEEDED
+                popup = p
+            }
+            bubble?.text = text
+            val loc = IntArray(2)
+            getLocationOnScreen(loc)
+            val pw = p.width
+            var xo = (width - pw) / 2
+            val left = loc[0] + xo
+            val sw = resources.displayMetrics.widthPixels
+            if (left < 0) xo -= left
+            if (left + pw > sw) xo -= (left + pw - sw)
+            p.showAsDropDown(this, xo, -(height + p.height + (4 * d).toInt()))
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun hideBubble() {
+        try {
+            popup?.dismiss()
+        } catch (e: Exception) {
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        hideBubble()
+        ui.removeCallbacks(longRun)
+        ui.removeCallbacks(repRun)
+        super.onDetachedFromWindow()
+    }
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 down = true
                 longDone = false
                 invalidate()
-                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                if (haptic) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                showBubble()
                 if (repeatable) {
                     onTap()
                     ui.postDelayed(repRun, 380)
@@ -124,6 +187,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
 
     private fun release() {
         down = false
+        hideBubble()
         ui.removeCallbacks(longRun)
         ui.removeCallbacks(repRun)
         invalidate()

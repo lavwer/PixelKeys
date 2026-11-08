@@ -41,8 +41,20 @@ class SettingsActivity : Activity() {
             root.addView(b)
         }
 
+        val prefs = getSharedPreferences("ui", MODE_PRIVATE)
+        fun cycle(key: String, title: String, names: List<String>, def: Int) {
+            val b = Button(this)
+            b.text = title + ": " + names[prefs.getInt(key, def)]
+            b.setOnClickListener {
+                val n = (prefs.getInt(key, def) + 1) % names.size
+                prefs.edit().putInt(key, n).apply()
+                b.text = title + ": " + names[n]
+            }
+            root.addView(b)
+        }
+
         label("Pixel Keys", 28f, true)
-        label("Клавиатура в стиле Pixel: русская и английская раскладки, история буфера обмена с закреплением.", 15f)
+        label("Клавиатура в стиле Pixel: русская и английская раскладки, эмодзи, история буфера обмена с закреплением.", 15f)
 
         btn("1. Включить клавиатуру") {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
@@ -55,12 +67,15 @@ class SettingsActivity : Activity() {
         field.hint = "3. Нажми сюда и проверь набор"
         root.addView(field)
 
+        label("Настройки (применяются при следующем открытии клавиатуры)", 13f)
+        cycle("theme", "Тема", listOf("Авто", "Светлая", "Тёмная"), 0)
+        cycle("height", "Высота клавиш", listOf("Низкая", "Средняя", "Высокая"), 1)
+
         btn("Очистить историю буфера") {
             ClipStore(this).clearAll()
             Toast.makeText(this, "История очищена", Toast.LENGTH_SHORT).show()
         }
 
-        // Проверка прямо на телефоне: просим у системы список разрешений этого приложения.
         val perms = try {
             packageManager.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS).requestedPermissions
         } catch (e: Exception) {
