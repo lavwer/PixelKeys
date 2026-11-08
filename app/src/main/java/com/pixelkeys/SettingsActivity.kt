@@ -87,6 +87,8 @@ class SettingsActivity : Activity() {
         cycle("height", "Высота клавиш", listOf("Низкая", "Средняя", "Высокая"), 1)
         cycle("t9", "Подсказки слов (T9)", listOf("Вкл", "Выкл"), 0)
         cycle("punct", "Кнопки запятой и точки", listOf("Показывать", "Скрыть"), 0)
+        cycle("numrow", "Ряд цифр", listOf("Всегда", "Только вертикально", "Скрыть"), 1)
+        cycle("minimal", "Режим «только буквы»", listOf("Выкл", "Вкл"), 0)
 
         btn("Очистить историю буфера") {
             ClipStore(this).clearAll()

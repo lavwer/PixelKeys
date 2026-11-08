@@ -65,6 +65,12 @@ class PixelIME : InputMethodService() {
     private var heightMode = 1
     private var showPunct = true
     private var t9On = true
+    private var numMode = 1        // ряд цифр: 0 = всегда, 1 = только вертикально, 2 = скрыть
+    private var minimal = false    // режим «только буквы»
+    private var keyRows = 5
+    private var builtLandscape = false
+    private var builtNight = false
+    private var contentBox: FrameLayout? = null
     private var curWord = ""
 
     private var keysBox: LinearLayout? = null
@@ -108,9 +114,25 @@ class PixelIME : InputMethodService() {
         heightMode = sp.getInt("height", 1)
         showPunct = sp.getInt("punct", 0) == 0
         t9On = sp.getInt("t9", 0) == 0
+        numMode = sp.getInt("numrow", 1)
+        minimal = sp.getInt("minimal", 0) == 1
     }
 
     override fun onEvaluateFullscreenMode() = false
+
+    // Поворот экрана / смена день-ночь: пересобираем клавиатуру под новые размеры
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val land = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val night = (newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        if (land != builtLandscape || night != builtNight) {
+            loadPrefs()
+            pal = Palette(this, themeMode)
+            setInputView(buildRoot())
+            afterInput()
+            styleNavBar()
+        }
+    }
 
     override fun onCreateInputView(): View {
         loadPrefs()
@@ -160,8 +182,25 @@ class PixelIME : InputMethodService() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+    private fun isLandscape() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    private fun systemNight() =
+        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    private fun barH() = if (isLandscape()) dp(34) else dp(40)
+    private fun showNumRowOnLetters() = !minimal && (numMode == 0 || (numMode == 1 && !isLandscape()))
+
+    private fun applyContentHeight() {
+        val c = contentBox ?: return
+        val rows = if (mode == 0) keyRows else 5
+        val h = rowH() * rows
+        val lp = c.layoutParams
+        if (lp != null && lp.height != h) {
+            lp.height = h
+            c.layoutParams = lp
+        }
+    }
+
     private fun rowH(): Int {
-        val base = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 40 else 46
+        val base = if (isLandscape()) 34 else 46
         val scale = when (heightMode) {
             0 -> 0.88f
             2 -> 1.15f
@@ -174,6 +213,8 @@ class PixelIME : InputMethodService() {
 
     private fun buildRoot(): View {
         mode = 0
+        builtLandscape = isLandscape()
+        builtNight = systemNight()
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
         root.setBackgroundColor(pal.bg)
@@ -189,14 +230,14 @@ class PixelIME : InputMethodService() {
             onTap = { setMode(1) }
         }
         clipBtn = cb
-        bar.addView(cb, LinearLayout.LayoutParams(dp(48), dp(40)))
+        bar.addView(cb, LinearLayout.LayoutParams(dp(48), barH()))
 
         val emb = Key(this, pal, Key.FLAT).apply {
             icon = ico(R.drawable.ic_emoji)
             onTap = { setMode(2) }
         }
         emojiBtn = emb
-        bar.addView(emb, LinearLayout.LayoutParams(dp(48), dp(40)))
+        bar.addView(emb, LinearLayout.LayoutParams(dp(48), barH()))
 
         // капсула
         val capsule = LinearLayout(this)
@@ -258,7 +299,7 @@ class PixelIME : InputMethodService() {
         clearBtn = cl
         capsule.addView(cl, LinearLayout.LayoutParams(dp(92), MATCH))
 
-        val capLp = LinearLayout.LayoutParams(0, dp(34), 1f)
+        val capLp = LinearLayout.LayoutParams(0, barH() - dp(6), 1f)
         capLp.setMargins(dp(4), 0, dp(4), 0)
         bar.addView(capsule, capLp)
 
@@ -267,10 +308,11 @@ class PixelIME : InputMethodService() {
             icon = ico(R.drawable.ic_app)
             onTap = { openApp() }
         }
-        bar.addView(ab, LinearLayout.LayoutParams(dp(48), dp(40)))
+        bar.addView(ab, LinearLayout.LayoutParams(dp(48), barH()))
 
         // область под панелью: клавиши, буфер или эмодзи
         val content = FrameLayout(this)
+        contentBox = content
         val kb = LinearLayout(this)
         kb.orientation = LinearLayout.VERTICAL
         keysBox = kb
@@ -304,7 +346,7 @@ class PixelIME : InputMethodService() {
         content.addView(sv, FrameLayout.LayoutParams(MATCH, MATCH))
         content.addView(ebox, FrameLayout.LayoutParams(MATCH, MATCH))
 
-        root.addView(bar, LinearLayout.LayoutParams(MATCH, dp(40)))
+        root.addView(bar, LinearLayout.LayoutParams(MATCH, barH()))
         root.addView(content, LinearLayout.LayoutParams(MATCH, rowH() * 5))
         renderKeys()
         return root
@@ -360,6 +402,12 @@ class PixelIME : InputMethodService() {
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
     }
 
+    private fun switchLang() {
+        lang = 1 - lang
+        page = 0
+        renderKeys()
+    }
+
     private fun renderKeys() {
         val box = keysBox ?: return
         box.removeAllViews()
@@ -368,9 +416,13 @@ class PixelIME : InputMethodService() {
         val ru = lang == 0
         val rows = if (ru) ruRows else enRows
         val tgt = if (page == 0) rows[0].length.toFloat() else 10f
+        var count = 0
 
-        // ряд цифр
-        addRow(box, "1234567890".map { charKey(it.toString(), false, 18f) }, 10f)
+        // ряд цифр: на страницах цифр/символов он нужен всегда, на буквенной — по настройке
+        if (page != 0 || showNumRowOnLetters()) {
+            addRow(box, "1234567890".map { charKey(it.toString(), false, 18f) }, 10f)
+            count++
+        }
 
         if (page == 0) {
             addRow(box, rows[0].map { charKey(it.toString(), true) }, tgt)
@@ -397,38 +449,38 @@ class PixelIME : InputMethodService() {
             }
             addRow(box, listOf(tk) + s[2].map { charKey(it.toString(), false) } + backKey(1.5f), 10f)
         }
+        count += 3
 
-        // нижний ряд (без запятой и точки остальные кнопки становятся шире)
-        val symW = if (showPunct) 1.5f else 1.75f
-        val globeW = if (showPunct) 1f else 1.5f
-        val enterW = if (showPunct) 1.5f else 1.75f
-        val punctW = if (showPunct) 2f else 0f
+        // нижний ряд. Без запятой и точки кнопки шире; в режиме «только буквы» остаются «…», пробел и Enter
+        val withPunct = showPunct && !minimal
+        val symW = if (withPunct) 1.5f else 1.75f
+        val enterW = symW
+        val globeW = if (minimal) 0f else if (withPunct) 1f else 1.5f
+        val punctW = if (withPunct) 2f else 0f
 
         val sym = Key(this, pal, Key.SPECIAL).apply {
             weight = symW
-            textSp = 15f
-            label = if (page == 0) "?123" else if (ru) "АБВ" else "ABC"
+            textSp = if (minimal && page == 0) 22f else 15f
+            label = if (page == 0) { if (minimal) "…" else "?123" } else if (ru) "АБВ" else "ABC"
             onTap = {
                 page = if (page == 0) 1 else 0
                 renderKeys()
             }
+            if (minimal) onLong = { showPicker() }
         }
         val globe = Key(this, pal, Key.SPECIAL).apply {
             weight = globeW
             scallop = true
             icon = ico(R.drawable.ic_globe)
-            onTap = {
-                lang = 1 - lang
-                page = 0
-                renderKeys()
-            }
+            onTap = { switchLang() }
             onLong = { showPicker() }
         }
         val space = Key(this, pal).apply {
-            weight = tgt - (symW + globeW + enterW + punctW)
+            weight = tgt - (symW + enterW + globeW + punctW)
             textSp = 13f
             label = if (ru) "Русский" else "English"
             onTap = { type(" ") }
+            if (minimal) onLong = { switchLang() }   // без глобуса язык меняется долгим нажатием на пробел
         }
         val ek = Key(this, pal, Key.ACTION).apply {
             scallop = true
@@ -437,14 +489,19 @@ class PixelIME : InputMethodService() {
             onTap = { enter() }
         }
         enterKey = ek
-        if (showPunct) {
-            val comma = charKey(",", false, 22f, Key.SPECIAL)
-            val period = charKey(".", false, 22f, Key.SPECIAL)
-            addRow(box, listOf(sym, comma, globe, space, period, ek), tgt)
-        } else {
-            addRow(box, listOf(sym, globe, space, ek), tgt)
-        }
 
+        val bottom = ArrayList<Key>()
+        bottom.add(sym)
+        if (withPunct) bottom.add(charKey(",", false, 22f, Key.SPECIAL))
+        if (!minimal) bottom.add(globe)
+        bottom.add(space)
+        if (withPunct) bottom.add(charKey(".", false, 22f, Key.SPECIAL))
+        bottom.add(ek)
+        addRow(box, bottom, tgt)
+        count++
+
+        keyRows = count
+        applyContentHeight()
         applyShift()
         updateEnter()
     }
@@ -453,6 +510,7 @@ class PixelIME : InputMethodService() {
 
     private fun setMode(m: Int) {
         mode = if (mode == m) 0 else m   // повторное нажатие закрывает панель
+        applyContentHeight()
         keysBox?.visibility = if (mode == 0) View.VISIBLE else View.GONE
         clipScroll?.visibility = if (mode == 1) View.VISIBLE else View.GONE
         emojiBox?.visibility = if (mode == 2) View.VISIBLE else View.GONE
