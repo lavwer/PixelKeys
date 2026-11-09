@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -14,6 +15,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -89,6 +91,83 @@ class SettingsActivity : Activity() {
         t.setPadding(dp(16), 0, dp(16), 0)
         t.setOnClickListener { onClick() }
         return t
+    }
+
+    /** Смещает оттенок цвета: из любого цвета темы получается красивый двухцветный градиент. */
+    private fun shiftHue(color: Int, deg: Float): Int {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(color, hsv)
+        hsv[0] = (hsv[0] + deg) % 360f
+        hsv[1] = (hsv[1] * 1.1f).coerceAtMost(1f)
+        return Color.HSVToColor(hsv)
+    }
+
+    private fun gradient(c1: Int, c2: Int, radiusDp: Int): GradientDrawable {
+        val g = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(c1, c2))
+        g.cornerRadius = dp(radiusDp).toFloat()
+        return g
+    }
+
+    private fun heroButton(text: String, primary: Boolean, onClick: () -> Unit): TextView {
+        val t = tv(text, 16f, if (primary) pal.action else pal.onAction, true)
+        t.gravity = Gravity.CENTER
+        t.background = round(if (primary) pal.onAction else Color.argb(48, 255, 255, 255), 28)
+        t.setPadding(dp(16), 0, dp(16), 0)
+        t.setOnClickListener { onClick() }
+        return t
+    }
+
+    private fun chip(text: String): TextView {
+        val t = tv(text, 12f, pal.text, true)
+        t.background = round(pal.special, 14)
+        t.setPadding(dp(12), dp(5), dp(12), dp(5))
+        return t
+    }
+
+    private fun featureCard(emoji: String, title: String, desc: String): View {
+        val c = LinearLayout(this)
+        c.orientation = LinearLayout.VERTICAL
+        c.background = round(pal.key, 26)
+        c.setPadding(dp(16), dp(16), dp(16), dp(18))
+        val badge = tv(emoji, 22f, pal.text)
+        badge.gravity = Gravity.CENTER
+        badge.background = round(pal.special, 16)
+        c.addView(badge, LinearLayout.LayoutParams(dp(46), dp(46)))
+        val t = tv(title, 16f, pal.text, true)
+        t.setPadding(0, dp(12), 0, dp(4))
+        c.addView(t)
+        c.addView(tv(desc, 13f, pal.hint))
+        return c
+    }
+
+    private fun featureRow(a: View, b: View): View {
+        val r = LinearLayout(this)
+        r.orientation = LinearLayout.HORIZONTAL
+        val la = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+        la.rightMargin = dp(5)
+        val lb = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+        lb.leftMargin = dp(5)
+        r.addView(a, la)
+        r.addView(b, lb)
+        return r
+    }
+
+    private fun stepRow(n: Int, text: String): View {
+        val r = LinearLayout(this)
+        r.orientation = LinearLayout.HORIZONTAL
+        r.gravity = Gravity.CENTER_VERTICAL
+        r.setPadding(0, dp(10), 0, dp(10))
+        val num = tv(n.toString(), 16f, pal.onAction, true)
+        num.gravity = Gravity.CENTER
+        val oval = GradientDrawable()
+        oval.shape = GradientDrawable.OVAL
+        oval.setColor(pal.action)
+        num.background = oval
+        r.addView(num, LinearLayout.LayoutParams(dp(36), dp(36)))
+        val t = tv(text, 15f, pal.text)
+        t.setPadding(dp(14), 0, 0, 0)
+        r.addView(t, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        return r
     }
 
     private fun choiceRow(title: String, key: String, names: List<String>, def: Int): View {
@@ -195,33 +274,75 @@ class SettingsActivity : Activity() {
         root.orientation = LinearLayout.VERTICAL
         root.setPadding(dp(16), dp(28), dp(16), dp(40))
 
-        root.addView(tv("Pixel Keys", 34f, pal.text, true))
+        // --- шапка сайта: логотип, название, версия ---
         val ver = try {
             packageManager.getPackageInfo(packageName, 0).versionName
         } catch (e: Exception) {
             ""
         }
-        val sub = tv("Версия $ver · клавиатура без доступа в интернет", 14f, pal.hint)
-        sub.setPadding(0, dp(2), 0, dp(16))
-        root.addView(sub)
+        val nav = LinearLayout(this)
+        nav.orientation = LinearLayout.HORIZONTAL
+        nav.gravity = Gravity.CENTER_VERTICAL
+        val logo = ImageView(this)
+        try {
+            logo.setImageDrawable(packageManager.getApplicationIcon(packageName))
+        } catch (e: Exception) {
+        }
+        nav.addView(logo, LinearLayout.LayoutParams(dp(40), dp(40)))
+        val brand = tv("Pixel Keys", 20f, pal.text, true)
+        brand.setPadding(dp(12), 0, 0, 0)
+        nav.addView(brand, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        nav.addView(chip("v$ver"))
+        root.addView(nav, lp(0, dp(48)))
 
-        root.addView(previewCard(), lp())
-
-        root.addView(section("ПОДКЛЮЧЕНИЕ"))
-        root.addView(pill("Включить клавиатуру", true) {
+        // --- главный блок (hero) ---
+        val hero = LinearLayout(this)
+        hero.orientation = LinearLayout.VERTICAL
+        hero.background = gradient(pal.action, shiftHue(pal.action, 42f), 32)
+        hero.setPadding(dp(22), dp(26), dp(22), dp(22))
+        hero.addView(tv("КЛАВИАТУРА", 12f, pal.onAction, true))
+        val h1 = tv("Печатай быстро.\nНикому не доверяй пароли.", 30f, pal.onAction, true)
+        h1.setPadding(0, dp(6), 0, dp(10))
+        hero.addView(h1)
+        hero.addView(tv("Умный T9, автоисправление, буфер обмена и 10 тем. Без доступа в интернет: набранное остаётся на телефоне.", 15f, pal.onAction))
+        hero.addView(heroButton("Включить клавиатуру", true) {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-        }, lp(0, dp(52)))
-        root.addView(pill("Выбрать Pixel Keys", false) {
+        }, lp(22, dp(54)))
+        hero.addView(heroButton("Выбрать Pixel Keys", false) {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
-        }, lp(10, dp(52)))
+        }, lp(10, dp(54)))
+        hero.addView(previewCard(), lp(20))
+        root.addView(hero, lp(16))
 
+        // --- возможности ---
+        root.addView(section("ВОЗМОЖНОСТИ"))
+        root.addView(featureRow(
+            featureCard("🔒", "Без интернета", "В приложении нет разрешения на сеть. Отправить нечего и некуда."),
+            featureCard("✨", "Умный T9", "Подсказки и автоисправление, в том числе при неверной раскладке.")
+        ), lp())
+        root.addView(featureRow(
+            featureCard("📋", "Буфер обмена", "История копирования с закреплением. Секретное не сохраняется."),
+            featureCard("🎨", "10 тем", "Цвета из обоев Pixel или свои: серая, синяя, зелёная и другие.")
+        ), lp(10))
+
+        // --- как подключить ---
+        root.addView(section("КАК ПОДКЛЮЧИТЬ"))
+        val steps = card()
+        steps.addView(stepRow(1, "Нажми «Включить клавиатуру» и включи Pixel Keys в списке"))
+        steps.addView(divider(), lp(0, dp(1)))
+        steps.addView(stepRow(2, "Нажми «Выбрать Pixel Keys» и укажи её основной"))
+        steps.addView(divider(), lp(0, dp(1)))
+        steps.addView(stepRow(3, "Проверь набор в поле ниже"))
+        root.addView(steps, lp())
+
+        root.addView(section("ПОПРОБУЙ ПРЯМО ЗДЕСЬ"))
         val field = EditText(this)
-        field.hint = "Нажми сюда и проверь набор"
+        field.hint = "Нажми сюда и напиши что-нибудь"
         field.setTextColor(pal.text)
         field.setHintTextColor(pal.hint)
         field.background = round(pal.key, 22)
-        field.setPadding(dp(18), dp(14), dp(18), dp(14))
-        root.addView(field, lp(14))
+        field.setPadding(dp(18), dp(16), dp(18), dp(16))
+        root.addView(field, lp())
 
         root.addView(section("ВНЕШНИЙ ВИД"))
         val c1 = card()
@@ -297,6 +418,14 @@ class SettingsActivity : Activity() {
         note.setPadding(0, 0, 0, dp(12))
         c4.addView(note)
         root.addView(c4, lp())
+
+        val foot = tv("Pixel Keys · версия $ver", 13f, pal.hint, true)
+        foot.gravity = Gravity.CENTER
+        foot.setPadding(0, dp(30), 0, dp(4))
+        root.addView(foot)
+        val foot2 = tv("Сделано так, чтобы набранный текст никуда не уходил.", 12f, pal.hint)
+        foot2.gravity = Gravity.CENTER
+        root.addView(foot2)
 
         val sv = ScrollView(this)
         sv.setBackgroundColor(pal.bg)
