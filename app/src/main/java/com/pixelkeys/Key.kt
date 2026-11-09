@@ -71,7 +71,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     override fun onDraw(canvas: Canvas) {
         val m = 3f * d
         rect.set(m, m * 1.2f, width - m, height - m * 1.2f)
-        val r = if (down) 24f * d else 12f * d
+        val r = if (down) 11f * d else 7f * d   // почти квадрат со скруглёнными углами
         val highlighted = active || kind == ACTION
 
         if (!(kind == FLAT && !down && !active)) {

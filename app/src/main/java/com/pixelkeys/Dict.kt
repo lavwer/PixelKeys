@@ -14,6 +14,20 @@ class Dict {
     @Volatile private var ru: Lang? = null
     @Volatile private var en: Lang? = null
 
+    /** Слова, которые пользователь «оставил» (отменил автоисправление). Хранятся только на телефоне. */
+    val user = HashSet<String>()
+
+    fun ready() = ru != null && en != null
+
+    /** Место слова в частотном списке (0 = самое частое) или -1, если слова нет. */
+    fun rank(lang: Int, w: String): Int {
+        val l = (if (lang == 0) ru else en) ?: return -1
+        val i = java.util.Arrays.binarySearch(l.words, w)
+        return if (i >= 0) l.ranks[i] else -1
+    }
+
+    fun known(lang: Int, w: String) = rank(lang, w) >= 0 || user.contains(w)
+
     fun load(am: AssetManager) {
         try { ru = read(am.open("words_ru.txt")) } catch (e: Exception) { }
         try { en = read(am.open("words_en.txt")) } catch (e: Exception) { }
@@ -40,7 +54,7 @@ class Dict {
     }
 
     /** До n самых частых слов, начинающихся с prefix (само prefix не возвращается). lang: 0 = рус, 1 = англ. */
-    fun suggest(lang: Int, prefix: String, n: Int): List<String> {
+    fun suggest(lang: Int, prefix: String, n: Int, includeExact: Boolean = false): List<String> {
         val l = (if (lang == 0) ru else en) ?: return emptyList()
         val p = prefix.lowercase()
         var lo = 0
@@ -55,7 +69,7 @@ class Dict {
         while (i < l.words.size && l.words[i].startsWith(p)) {
             val w = l.words[i]
             val rk = l.ranks[i]
-            if (w != p && rk < br[n - 1]) {
+            if ((includeExact || w != p) && rk < br[n - 1]) {
                 var j = n - 1
                 while (j > 0 && br[j - 1] > rk) {
                     br[j] = br[j - 1]

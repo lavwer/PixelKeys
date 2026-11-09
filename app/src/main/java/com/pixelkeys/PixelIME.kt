@@ -12,12 +12,14 @@ import android.os.Handler
 import android.os.Looper
 import android.text.InputType
 import android.text.TextUtils
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -50,6 +52,7 @@ class PixelIME : InputMethodService() {
     private lateinit var store: ClipStore
     private lateinit var cm: ClipboardManager
     private val dict = Dict()
+    private val corr = Corrector(dict)
     private val mainH = Handler(Looper.getMainLooper())
     private val sugRun = Runnable { doSuggestions() }
     private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { captureClip() }
@@ -72,6 +75,10 @@ class PixelIME : InputMethodService() {
     private var builtNight = false
     private var contentBox: FrameLayout? = null
     private var curWord = ""
+    private var autoOn = true
+    private var sugDelLen = 0
+    private class Corr(val original: String, val corrected: String, val sep: String)
+    private var lastCorr: Corr? = null
 
     private var keysBox: LinearLayout? = null
     private var clipScroll: ScrollView? = null
@@ -114,11 +121,24 @@ class PixelIME : InputMethodService() {
         heightMode = sp.getInt("height", 1)
         showPunct = sp.getInt("punct", 0) == 0
         t9On = sp.getInt("t9", 0) == 0
+        autoOn = sp.getInt("autocorr", 0) == 0
         numMode = sp.getInt("numrow", 1)
         minimal = sp.getInt("minimal", 0) == 1
     }
 
     override fun onEvaluateFullscreenMode() = false
+
+    private fun loadUserWords() {
+        val set = getSharedPreferences("ui", Context.MODE_PRIVATE).getStringSet("userwords", null)
+        dict.user.clear()
+        if (set != null) dict.user.addAll(set)
+    }
+
+    private fun learnWord(w: String) {
+        if (w.length < 2 || w.length > 40 || dict.user.size >= 1000) return
+        dict.user.add(w)
+        getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putStringSet("userwords", HashSet(dict.user)).apply()
+    }
 
     // Поворот экрана / смена день-ночь: пересобираем клавиатуру под новые размеры
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -145,6 +165,7 @@ class PixelIME : InputMethodService() {
         val sp = getSharedPreferences("ui", Context.MODE_PRIVATE)
         val rebuild = sp.getInt("theme", 0) != themeMode || sp.getInt("height", 1) != heightMode
         loadPrefs()
+        loadUserWords()
         if (rebuild) {
             pal = Palette(this, themeMode)
             setInputView(buildRoot())
@@ -257,9 +278,9 @@ class PixelIME : InputMethodService() {
         for (i in 0 until 3) {
             val t = TextView(this)
             t.gravity = Gravity.CENTER
-            t.textSize = 15f
             t.maxLines = 1
             t.ellipsize = TextUtils.TruncateAt.END
+            t.setAutoSizeTextTypeUniformWithConfiguration(11, 16, 1, TypedValue.COMPLEX_UNIT_SP)
             t.setTextColor(pal.text)
             t.setPadding(dp(4), 0, dp(4), 0)
             t.setOnClickListener {
@@ -589,23 +610,54 @@ class PixelIME : InputMethodService() {
         mainH.post(sugRun)
     }
 
+    private fun badVariation(t: Int): Boolean {
+        val v = t and InputType.TYPE_MASK_VARIATION
+        return v == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+            v == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+            v == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+            v == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
+            v == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS ||
+            v == InputType.TYPE_TEXT_VARIATION_URI
+    }
+
+    /** T9 работает почти везде. Выключен только в полях паролей, почты, адресов, чисел и телефонов.
+     *  Пометку приложения «без подсказок» игнорируем (подсказки ничего не меняют в тексте). */
     private fun t9Allowed(ei: EditorInfo): Boolean {
+        val t = ei.inputType
+        val cls = t and InputType.TYPE_MASK_CLASS
+        if (cls != InputType.TYPE_CLASS_TEXT && cls != 0) return false
+        return !(cls == InputType.TYPE_CLASS_TEXT && badVariation(t))
+    }
+
+    /** Автоисправление меняет текст, поэтому уважает пометку приложения «без подсказок» и не трогает имена и адреса. */
+    private fun acAllowed(ei: EditorInfo): Boolean {
         val t = ei.inputType
         if ((t and InputType.TYPE_MASK_CLASS) != InputType.TYPE_CLASS_TEXT) return false
         if ((t and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) != 0) return false
+        if (badVariation(t)) return false
         val v = t and InputType.TYPE_MASK_VARIATION
-        return v != InputType.TYPE_TEXT_VARIATION_PASSWORD &&
-            v != InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD &&
-            v != InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD &&
-            v != InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS &&
-            v != InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS &&
-            v != InputType.TYPE_TEXT_VARIATION_URI
+        return v != InputType.TYPE_TEXT_VARIATION_PERSON_NAME && v != InputType.TYPE_TEXT_VARIATION_POSTAL_ADDRESS
     }
 
     private fun trailingWord(s: String): String {
         var i = s.length
         while (i > 0 && s[i - 1].isLetter()) i--
         if (i > 0 && (s[i - 1] == '\'' || s[i - 1] == '’')) return ""
+        return s.substring(i)
+    }
+
+    /** Последний «кусок» текста: латиница вместе с , . ; ' [ ] ` (это буквы б ю ж э х ъ ё на русской раскладке) или кириллица. */
+    private fun trailingToken(s: String): String {
+        var i = s.length
+        if (i == 0) return ""
+        val last = s[i - 1]
+        if (Layout.isLatinTokenChar(last)) {
+            while (i > 0 && Layout.isLatinTokenChar(s[i - 1])) i--
+        } else if (Layout.isCyr(last)) {
+            while (i > 0 && Layout.isCyr(s[i - 1])) i--
+        } else {
+            return ""
+        }
         return s.substring(i)
     }
 
@@ -621,13 +673,30 @@ class PixelIME : InputMethodService() {
         val enabled = t9On && mode == 0 && ei != null && t9Allowed(ei) && currentInputConnection != null
         var word = ""
         var list: List<String> = emptyList()
+        sugDelLen = 0
         if (enabled) {
-            val before = currentInputConnection?.getTextBeforeCursor(40, 0)?.toString() ?: ""
+            val before = currentInputConnection?.getTextBeforeCursor(60, 0)?.toString() ?: ""
             word = trailingWord(before)
+            sugDelLen = word.length
             if (word.isNotEmpty()) {
-                val c = word[0]
-                val cyr = (c in 'а'..'я') || (c in 'А'..'Я') || c == 'ё' || c == 'Ё'
+                val cyr = Layout.isCyr(word[0])
                 list = dict.suggest(if (cyr) 0 else 1, word, 3).map { matchCase(word, it) }
+                if (list.isEmpty()) {
+                    // возможно, слово набрано не в той раскладке
+                    val tok = trailingToken(before)
+                    if (tok.length >= 2) {
+                        val latin = Layout.isLatinTokenChar(tok[tok.length - 1])
+                        val mapped = if (latin) Layout.toRu(tok.lowercase()) else Layout.toEn(tok.lowercase())
+                        val okMapped = if (latin) mapped.all { Layout.isCyr(it) } else mapped.all { it in 'a'..'z' }
+                        if (okMapped) {
+                            val alt = dict.suggest(if (latin) 0 else 1, mapped, 3, true)
+                            if (alt.isNotEmpty()) {
+                                list = alt.map { matchCase(tok, it) }
+                                sugDelLen = tok.length
+                            }
+                        }
+                    }
+                }
             }
         }
         curWord = word
@@ -654,10 +723,11 @@ class PixelIME : InputMethodService() {
     private fun pickSuggestion(s: String) {
         val ic = currentInputConnection ?: return
         ic.beginBatchEdit()
-        if (curWord.isNotEmpty()) ic.deleteSurroundingText(curWord.length, 0)
+        if (sugDelLen > 0) ic.deleteSurroundingText(sugDelLen, 0)
         ic.commitText(s + " ", 1)
         ic.endBatchEdit()
         lastSpace = 0L
+        lastCorr = null
         afterInput()
     }
 
@@ -665,9 +735,80 @@ class PixelIME : InputMethodService() {
 
     private fun shifted(s: String) = if (shift > 0) s.uppercase() else s
 
+    private val autoSeps = " .,!?;:)"
+    private val skipBefore = "0123456789@#/\\_.:-'’=&%\$+<>"
+    private val contractions = mapOf(
+        "dont" to "don't", "cant" to "can't", "wont" to "won't", "didnt" to "didn't", "doesnt" to "doesn't",
+        "isnt" to "isn't", "arent" to "aren't", "wasnt" to "wasn't", "werent" to "weren't", "couldnt" to "couldn't",
+        "wouldnt" to "wouldn't", "shouldnt" to "shouldn't", "havent" to "haven't", "hasnt" to "hasn't",
+        "hadnt" to "hadn't", "youre" to "you're", "theyre" to "they're", "thats" to "that's", "whats" to "what's",
+        // частые опечатки, которые встречаются в словаре как «слова»
+        "thier" to "their", "wich" to "which", "alot" to "a lot", "seperate" to "separate", "occured" to "occurred",
+        "untill" to "until", "tommorow" to "tomorrow", "tomorow" to "tomorrow", "beleive" to "believe",
+        "goverment" to "government", "truely" to "truly", "recieved" to "received"
+    )
+
+    private fun atSentenceStart(pre: String): Boolean {
+        val t = pre.trimEnd(' ', '\t')
+        return t.isEmpty() || ".!?…\n".indexOf(t.last()) >= 0
+    }
+
+    private fun applyCorr(ic: InputConnection, orig: String, fixed: String, sep: String) {
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(orig.length, 0)
+        ic.commitText(fixed, 1)
+        ic.endBatchEdit()
+        lastCorr = Corr(orig, fixed, sep)
+    }
+
+    /** Вызывается перед пробелом / знаком препинания / Enter: исправляет слово слева от курсора. */
+    private fun tryAutocorrect(ic: InputConnection, sep: String, allowLayout: Boolean) {
+        lastCorr = null
+        if (!autoOn || !dict.ready()) return
+        val ei = currentInputEditorInfo ?: return
+        if (!acAllowed(ei)) return
+        val before = ic.getTextBeforeCursor(60, 0)?.toString() ?: return
+
+        // 1) слово набрано не в той раскладке («ghbdtn» -> «привет»), только по пробелу / Enter
+        val tok = trailingToken(before)
+        if (tok.length >= 3) {
+            val fixedLayout = corr.layoutFix(tok)
+            if (fixedLayout != null) {
+                if (allowLayout) applyCorr(ic, tok, fixedLayout, sep)
+                return
+            }
+        }
+
+        // 2) опечатки
+        val word = trailingWord(before)
+        if (word.length < 4 || word.length > 20) return
+        val pre = before.substring(0, before.length - word.length)
+        if (pre.isNotEmpty() && skipBefore.indexOf(pre.last()) >= 0) return
+        if (word.all { it.isUpperCase() }) return
+        val cyr = Layout.isCyr(word[0])
+        if (!word.all { Layout.isCyr(it) == cyr && (cyr || it in 'a'..'z' || it in 'A'..'Z') }) return
+        if (word[0].isUpperCase() && !atSentenceStart(pre)) return
+        val low = word.lowercase()
+        val lang = if (cyr) 0 else 1
+        if (lang == 1) {
+            val ct = contractions[low]
+            if (ct != null) {
+                applyCorr(ic, word, matchCase(word, ct), sep)
+                return
+            }
+        }
+        if (dict.known(lang, low)) return
+        val fix = corr.fix(low, lang) ?: return
+        applyCorr(ic, word, matchCase(word, fix), sep)
+    }
+
     private fun type(s: String) {
-        val ic = currentInputConnection
-        if (ic == null) return
+        val ic = currentInputConnection ?: return
+        if (s.length == 1 && autoSeps.indexOf(s[0]) >= 0) {
+            tryAutocorrect(ic, s, s == " ")
+        } else {
+            lastCorr = null
+        }
         if (s == " ") {
             // двойной пробел после слова = точка и пробел
             val now = System.currentTimeMillis()
@@ -677,6 +818,7 @@ class PixelIME : InputMethodService() {
                     ic.deleteSurroundingText(1, 0)
                     ic.commitText(". ", 1)
                     lastSpace = 0L
+                    lastCorr = null
                     afterInput()
                     return
                 }
@@ -688,6 +830,23 @@ class PixelIME : InputMethodService() {
     }
 
     private fun backspace() {
+        val lc = lastCorr
+        lastCorr = null
+        if (lc != null) {
+            // Backspace сразу после автоисправления возвращает слово как было и запоминает его
+            val ic = currentInputConnection
+            val tail = lc.corrected + lc.sep
+            val before = ic?.getTextBeforeCursor(tail.length, 0)?.toString()
+            if (ic != null && before == tail) {
+                ic.beginBatchEdit()
+                ic.deleteSurroundingText(tail.length, 0)
+                ic.commitText(lc.original, 1)
+                ic.endBatchEdit()
+                learnWord(lc.original.lowercase())
+                afterInput()
+                return
+            }
+        }
         sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
         afterInput()
     }
@@ -700,6 +859,8 @@ class PixelIME : InputMethodService() {
             (ei.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0 ||
             act == EditorInfo.IME_ACTION_NONE ||
             act == EditorInfo.IME_ACTION_UNSPECIFIED
+        tryAutocorrect(ic, "\n", true)
+        lastCorr = null
         if (plain) sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER) else ic.performEditorAction(act)
         afterInput()
     }
