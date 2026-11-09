@@ -38,19 +38,41 @@ class Dict {
         en = read(enIn)
     }
 
+    /**
+     * Файл словаря: на каждой строке «слово<TAB>место в частотном списке», строки уже отсортированы по алфавиту
+     * (поэтому при загрузке сортировать не нужно).
+     */
     private fun read(input: InputStream): Lang {
-        val list = ArrayList<String>()
+        var words = arrayOfNulls<String>(1 shl 17)
+        var ranks = IntArray(1 shl 17)
+        var n = 0
         input.bufferedReader(Charsets.UTF_8).useLines { lines ->
             for (ln in lines) {
-                val w = ln.trim()
-                if (w.isNotEmpty()) list.add(w)
+                val t = ln.indexOf('\t')
+                if (t <= 0) continue
+                val r = ln.substring(t + 1).trim().toIntOrNull() ?: continue
+                if (n == words.size) {
+                    words = words.copyOf(n * 2)
+                    ranks = ranks.copyOf(n * 2)
+                }
+                words[n] = ln.substring(0, t)
+                ranks[n] = r
+                n++
             }
         }
-        // слова храним по алфавиту (для быстрого поиска по началу), а частоту — отдельно
-        val idx = list.indices.sortedBy { list[it] }
-        val words = Array(list.size) { list[idx[it]] }
-        val ranks = IntArray(list.size) { idx[it] }
-        return Lang(words, ranks)
+        val w = Array(n) { words[it]!! }
+        val r = ranks.copyOf(n)
+        // на всякий случай проверяем порядок (поиск по словарю работает только на отсортированном списке)
+        var sorted = true
+        for (i in 1 until n) {
+            if (w[i - 1] >= w[i]) {
+                sorted = false
+                break
+            }
+        }
+        if (sorted) return Lang(w, r)
+        val idx = (0 until n).sortedBy { w[it] }
+        return Lang(Array(n) { w[idx[it]] }, IntArray(n) { r[idx[it]] })
     }
 
     /** До n самых частых слов, начинающихся с prefix (само prefix не возвращается). lang: 0 = рус, 1 = англ. */

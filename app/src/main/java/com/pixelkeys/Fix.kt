@@ -34,6 +34,10 @@ object Layout {
  */
 class Corrector(private val dict: Dict) {
 
+    companion object {
+        const val MARGIN = 0.8
+    }
+
     private val ruAlpha = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
     private val enAlpha = "abcdefghijklmnopqrstuvwxyz"
     private val ruPhon = pairs("ао", "еи", "ея", "иы", "ъь", "сз", "тд", "пб", "фв", "гк", "жш", "чщ", "эе", "ёе", "ую")
@@ -99,38 +103,50 @@ class Corrector(private val dict: Dict) {
         }
     }
 
-    /** Исправление опечатки в слове (строчными буквами). null, если исправлять нечего. */
-    fun fix(w: String, lang: Int): String? {
+    private class Cand(val word: String, val score: Double)
+
+    /** Лучшие варианты исправления с оценкой (чем больше, тем увереннее). */
+    private fun search(w: String, lang: Int, allowD2: Boolean): List<Cand> {
         val alpha = if (lang == 0) ruAlpha else enAlpha
         val nb = if (lang == 0) ruNb else enNb
         val phon = if (lang == 0) ruPhon else enPhon
-        var best: String? = null
-        var bestScore = -1e9
+        val maxRank = if (lang == 0) 110000 else 55000     // в очень редкие слова не исправляем
+        val found = HashMap<String, Double>()
 
         fun consider(c: String, pen: Double) {
             if (c == w) return
             val r = dict.rank(lang, c)
-            if (r < 0) return
+            if (r < 0 || r > maxRank) return
             val sc = -ln(r + 20.0) - pen
-            if (sc > bestScore) {
-                bestScore = sc
-                best = c
-            }
+            val old = found[c]
+            if (old == null || sc > old) found[c] = sc
         }
 
         edits1(w, alpha, nb, phon, true, true) { c, p -> consider(c, p) }
-        if (best != null) return if (bestScore > -13.5) best else null
-
-        if (w.length in 5..11) {
+        var limit = -13.5
+        if (found.isEmpty() && allowD2 && w.length in 5..11) {
             val first = ArrayList<Pair<String, Double>>()
             edits1(w, alpha, nb, phon, true, true) { c, p -> first.add(Pair(c, p)) }
             for ((s1, p1) in first) {
                 edits1(s1, alpha, nb, phon, false, false) { c, p -> consider(c, p1 + p + 0.7) }
             }
-            if (best != null && bestScore > -13.0) return best
+            limit = -13.0
         }
-        return null
+        return found.entries.filter { it.value > limit }.map { Cand(it.key, it.value) }.sortedByDescending { it.score }.take(5)
     }
+
+    /** Исправление опечатки в слове (строчными буквами). null, если исправлять нечего или нет уверенности. */
+    fun fix(w: String, lang: Int): String? {
+        val c = search(w, lang, true)
+        if (c.isEmpty()) return null
+        // если второй вариант почти так же хорош, не рискуем (его покажет T9 в капсуле)
+        if (c.size > 1 && c[0].score - c[1].score < MARGIN) return null
+        return c[0].word
+    }
+
+    /** Варианты для капсулы T9 (быстрый поиск, только в одну правку). */
+    fun candidates(w: String, lang: Int, n: Int): List<String> =
+        search(w, lang, false).take(n).map { it.word }
 
     private fun restoreCase(typed: String, s: String): String {
         if (typed.length > 1 && typed.all { !it.isLetter() || it.isUpperCase() } && typed.any { it.isLetter() }) return s.uppercase()

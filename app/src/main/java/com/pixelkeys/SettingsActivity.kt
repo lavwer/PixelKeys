@@ -244,6 +244,8 @@ class SettingsActivity : Activity() {
         c3.addView(switchRow("Подсказки слов (T9)", "Три слова над клавиатурой", "t9", 0, 0))
         c3.addView(divider(), lp(0, dp(1)))
         c3.addView(switchRow("Автоисправление", "Опечатки и слова не в той раскладке", "autocorr", 0, 0))
+        c3.addView(divider(), lp(0, dp(1)))
+        c3.addView(switchRow("Исправлять везде", "Даже там, где приложение просит не править текст", "autoany", 0, 0))
         root.addView(c3, lp())
 
         root.addView(section("ДАННЫЕ"))
@@ -255,6 +257,21 @@ class SettingsActivity : Activity() {
             prefs.edit().remove("userwords").apply()
             Toast.makeText(this, "Готово", Toast.LENGTH_SHORT).show()
         }, lp(10, dp(52)))
+
+        root.addView(section("ДИАГНОСТИКА"))
+        val c5 = card()
+        val diag = (prefs.getString("diag", "") ?: "").split("\n").filter { it.isNotBlank() }
+        c5.addView(tv("В каких приложениях работают подсказки и автоисправление. Откройте клавиатуру в нужном приложении и вернитесь сюда.", 13f, pal.hint).apply { setPadding(0, dp(10), 0, dp(6)) })
+        if (diag.isEmpty()) {
+            c5.addView(tv("Пока пусто.", 14f, pal.text).apply { setPadding(0, dp(4), 0, dp(10)) })
+        } else {
+            for (d in diag) {
+                c5.addView(tv(d.replace(" | ", "\n"), 12f, pal.text).apply { setPadding(0, dp(8), 0, dp(8)) })
+                c5.addView(divider(), lp(0, dp(1)))
+            }
+        }
+        root.addView(c5, lp())
+        root.addView(pill("Обновить список", false) { render() }, lp(10, dp(52)))
 
         root.addView(section("ПРИВАТНОСТЬ"))
         val c4 = card()
