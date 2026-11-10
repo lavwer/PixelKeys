@@ -7,17 +7,20 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -31,6 +34,7 @@ class SettingsActivity : Activity() {
 
     private lateinit var prefs: SharedPreferences
     private lateinit var pal: Palette
+    private lateinit var kbPal: Palette      // как выглядит сама клавиатура (с учётом фото)
     private var scroll: ScrollView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -212,21 +216,37 @@ class SettingsActivity : Activity() {
         return r
     }
 
-    /** Мини-клавиатура, которая показывает выбранную тему и форму клавиш. */
+    private fun roundClip(v: View, radiusDp: Int) {
+        v.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, dp(radiusDp).toFloat())
+            }
+        }
+        v.clipToOutline = true
+    }
+
+    /** Мини-клавиатура: показывает выбранную тему, фон-фото, скругление, прозрачность и размер букв. */
     private fun previewCard(): View {
+        val kb = kbPal
         val outer = LinearLayout(this)
         outer.orientation = LinearLayout.VERTICAL
-        val bg = round(pal.bg, 28)
-        bg.setStroke(dp(2), pal.pressed)
-        outer.background = bg
+        val photo = if (kb.hasPhoto) BgStore.load(this) else null
+        if (photo != null) {
+            outer.background = CropDrawable(photo)
+            roundClip(outer, 28)
+        } else {
+            val bg = round(kb.bg, 28)
+            bg.setStroke(dp(2), kb.pressed)
+            outer.background = bg
+        }
         outer.setPadding(dp(8), dp(10), dp(8), dp(10))
 
         val cap = LinearLayout(this)
         cap.orientation = LinearLayout.HORIZONTAL
         cap.gravity = Gravity.CENTER
-        cap.background = round(pal.key, 20)
+        cap.background = round(kb.keyA, 20)
         for (w in listOf("привет", "прикольно", "приятно")) {
-            val t = tv(w, 14f, pal.text)
+            val t = tv(w, 14f, kb.text)
             t.gravity = Gravity.CENTER
             t.maxLines = 1
             cap.addView(t, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
@@ -238,7 +258,7 @@ class SettingsActivity : Activity() {
         val row1 = LinearLayout(this)
         row1.orientation = LinearLayout.HORIZONTAL
         for (ch in "приветик") {
-            val k = Key(this, pal, Key.NORMAL)
+            val k = Key(this, kb, Key.NORMAL)
             k.label = ch.toString()
             k.haptic = false
             row1.addView(k, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
@@ -247,15 +267,15 @@ class SettingsActivity : Activity() {
 
         val row2 = LinearLayout(this)
         row2.orientation = LinearLayout.HORIZONTAL
-        val k1 = Key(this, pal, Key.SPECIAL)
+        val k1 = Key(this, kb, Key.SPECIAL)
         k1.label = "?123"
         k1.textSp = 15f
         k1.haptic = false
-        val k2 = Key(this, pal, Key.NORMAL)
+        val k2 = Key(this, kb, Key.NORMAL)
         k2.label = "Русский"
         k2.textSp = 13f
         k2.haptic = false
-        val k3 = Key(this, pal, Key.ACTION)
+        val k3 = Key(this, kb, Key.ACTION)
         k3.scallop = true
         k3.icon = getDrawable(R.drawable.ic_enter)?.mutate()
         k3.haptic = false
@@ -266,9 +286,79 @@ class SettingsActivity : Activity() {
         return outer
     }
 
+    /** Строка с ползунком. Значение сохраняется, когда отпустишь палец. */
+    private fun sliderRow(title: String, key: String, min: Int, max: Int, def: Int, unit: String, onDone: (() -> Unit)? = null): View {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(0, dp(12), 0, dp(6))
+        val head = LinearLayout(this)
+        head.orientation = LinearLayout.HORIZONTAL
+        head.addView(tv(title, 16f, pal.text), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val valueTv = tv("", 15f, pal.accent, true)
+        head.addView(valueTv)
+        box.addView(head)
+        val sb = SeekBar(this)
+        sb.max = max - min
+        sb.progress = prefs.getInt(key, def).coerceIn(min, max) - min
+        valueTv.text = (sb.progress + min).toString() + unit
+        sb.progressTintList = ColorStateList.valueOf(pal.accent)
+        sb.thumbTintList = ColorStateList.valueOf(pal.accent)
+        sb.progressBackgroundTintList = ColorStateList.valueOf(pal.pressed)
+        sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                valueTv.text = (progress + min).toString() + unit
+            }
+
+            override fun onStartTrackingTouch(bar: SeekBar?) {}
+
+            override fun onStopTrackingTouch(bar: SeekBar?) {
+                prefs.edit().putInt(key, (bar?.progress ?: 0) + min).apply()
+                if (onDone != null) onDone() else render()
+            }
+        })
+        box.addView(sb, lp(4))
+        return box
+    }
+
+    // ---------- фон из фото ----------
+
+    private val reqPhoto = 41
+
+    private fun pickPhoto() {
+        val i = Intent(Intent.ACTION_GET_CONTENT)
+        i.type = "image/*"
+        i.addCategory(Intent.CATEGORY_OPENABLE)
+        startActivityForResult(Intent.createChooser(i, "Выбери фото для фона"), reqPhoto)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != reqPhoto || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        Toast.makeText(this, "Обрабатываю фото…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val ok = BgStore.importPhoto(this, uri) &&
+                BgStore.process(this, prefs.getInt("bgblur", 40), prefs.getInt("bgdim", 30))
+            runOnUiThread {
+                if (!ok) Toast.makeText(this, "Не удалось открыть фото", Toast.LENGTH_SHORT).show()
+                render()
+            }
+        }.start()
+    }
+
+    private fun reprocess() {
+        Toast.makeText(this, "Применяю…", Toast.LENGTH_SHORT).show()
+        Thread {
+            BgStore.process(this, prefs.getInt("bgblur", 40), prefs.getInt("bgdim", 30))
+            runOnUiThread { render() }
+        }.start()
+    }
+
     private fun render() {
         val oldY = scroll?.scrollY ?: 0
-        pal = Palette(this, prefs.getInt("theme", 0))
+        pal = Palette(this, prefs.getInt("theme", 0), true)
+        kbPal = Palette(this, prefs.getInt("theme", 0))
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
@@ -352,6 +442,59 @@ class SettingsActivity : Activity() {
         c1.addView(divider(), lp(0, dp(1)))
         c1.addView(choiceRow("Ряд цифр", "numrow", listOf("Всегда", "Только вертикально", "Скрыть"), 1))
         root.addView(c1, lp())
+
+        // --- фон из фото ---
+        root.addView(section("ФОН КЛАВИАТУРЫ"))
+        val cbg = card()
+        val hasPhoto = BgStore.exists(this)
+        if (hasPhoto) {
+            val iv = ImageView(this)
+            iv.scaleType = ImageView.ScaleType.CENTER_CROP
+            iv.setImageBitmap(BgStore.load(this))
+            roundClip(iv, 20)
+            cbg.addView(iv, lp(12, dp(130)))
+        } else {
+            val hintTv = tv("Поставь своё фото на фон клавиатуры. Фото берётся из галереи и хранится только на телефоне.", 14f, pal.hint)
+            hintTv.setPadding(0, dp(14), 0, dp(6))
+            cbg.addView(hintTv)
+        }
+        cbg.addView(pill(if (hasPhoto) "Выбрать другое фото" else "Выбрать фото", true) { pickPhoto() }, lp(12, dp(50)))
+        if (hasPhoto) {
+            cbg.addView(sliderRow("Размытие", "bgblur", 0, 100, 40, "%") { reprocess() })
+            cbg.addView(divider(), lp(0, dp(1)))
+            cbg.addView(sliderRow("Затемнение", "bgdim", 0, 80, 30, "%") { reprocess() })
+            cbg.addView(pill("Убрать фото", false) {
+                BgStore.clear(this)
+                render()
+            }, lp(10, dp(50)))
+        }
+        root.addView(cbg, lp())
+
+        // --- форма и размер клавиш ---
+        root.addView(section("ФОРМА И РАЗМЕР КЛАВИШ"))
+        val cshape = card()
+        cshape.addView(sliderRow("Скругление клавиш", "radius", 0, 100, 30, "%"))
+        cshape.addView(divider(), lp(0, dp(1)))
+        cshape.addView(sliderRow("Прозрачность клавиш", "keyalpha", 30, 100, 100, "%"))
+        cshape.addView(divider(), lp(0, dp(1)))
+        cshape.addView(sliderRow("Размер букв", "textsize", 70, 140, 100, "%"))
+        cshape.addView(divider(), lp(0, dp(1)))
+        cshape.addView(sliderRow("Расстояние между клавишами", "gap", 0, 8, 3, " dp"))
+        root.addView(cshape, lp())
+
+        root.addView(section("ОТКЛИК"))
+        val cfx = card()
+        cfx.addView(switchRow("Вибрация", "Лёгкий отклик при нажатии", "vibrate", 0, 0))
+        cfx.addView(divider(), lp(0, dp(1)))
+        cfx.addView(switchRow("Звук клавиш", "Работает, если в системе включены звуки нажатий", "sound", 1, 0))
+        root.addView(cfx, lp())
+        root.addView(pill("Сбросить оформление", false) {
+            val e = prefs.edit()
+            for (k in listOf("radius", "keyalpha", "textsize", "gap", "bgblur", "bgdim", "vibrate", "sound")) e.remove(k)
+            e.apply()
+            BgStore.clear(this)
+            render()
+        }, lp(12, dp(50)))
 
         root.addView(section("РАСКЛАДКА"))
         val c2 = card()

@@ -11,15 +11,32 @@ import android.os.Build
  *       3..9 = цветные темы (серая, синяя, бирюзовая, зелёная, фиолетовая, розовая, оранжевая).
  * Цветные темы сами переключаются между светлым и тёмным вариантом вслед за системой.
  */
-class Palette(private val ctx: Context, mode: Int = 0) {
+class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = false) {
 
     companion object {
         // порядок совпадает с названиями в SettingsActivity (индекс = mode - 3)
         private val HUES = floatArrayOf(220f, 215f, 180f, 135f, 270f, 330f, 28f)
         private val SATS = floatArrayOf(0.12f, 1f, 1f, 1f, 1f, 1f, 1f)
+
+        /** Подпись всего оформления: когда она меняется, клавиатура пересобирается. */
+        fun signature(ctx: Context): String {
+            val sp = ctx.getSharedPreferences("ui", Context.MODE_PRIVATE)
+            val keys = listOf("theme", "height", "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "bgblur", "bgdim")
+            return keys.joinToString(",") { sp.getInt(it, -1).toString() } + "," + BgStore.stamp(ctx)
+        }
     }
 
-    val night = when (mode) {
+    private val sp = ctx.getSharedPreferences("ui", Context.MODE_PRIVATE)
+    val hasPhoto = !ignorePhoto && BgStore.exists(ctx)
+    val radiusPct = sp.getInt("radius", 30).coerceIn(0, 100)          // скругление клавиш
+    val keyAlpha = sp.getInt("keyalpha", 100).coerceIn(30, 100) * 255 / 100   // прозрачность клавиш
+    val textScale = sp.getInt("textsize", 100).coerceIn(70, 140) / 100f        // размер букв
+    val gapDp = sp.getInt("gap", 3).coerceIn(0, 8).toFloat()                    // расстояние между клавишами
+    val vibrate = sp.getInt("vibrate", 0) == 0
+    val sound = sp.getInt("sound", 1) == 0
+
+    // с фото на фоне клавиатура всегда тёмная (если не выбрана светлая тема): так буквы читаются
+    val night = if (hasPhoto && mode != 1) true else when (mode) {
         1 -> false
         2 -> true
         else -> (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -41,6 +58,7 @@ class Palette(private val ctx: Context, mode: Int = 0) {
     val key = if (themed) (if (night) hsv(0.35f, 0.34f) else hsv(0.05f, 1.0f))
               else if (dyn) c(if (night) android.R.color.system_neutral2_700 else android.R.color.system_neutral1_10)
               else s(if (night) "#3B3E45" else "#FFFFFF")
+    val keyA = Color.argb(keyAlpha, Color.red(key), Color.green(key), Color.blue(key))
     val special = if (themed) (if (night) hsv(0.45f, 0.24f) else hsv(0.25f, 0.86f))
                   else if (dyn) c(if (night) android.R.color.system_neutral2_800 else android.R.color.system_neutral2_200)
                   else s(if (night) "#2B2D33" else "#D3DAE8")

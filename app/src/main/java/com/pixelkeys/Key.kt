@@ -3,9 +3,11 @@ package com.pixelkeys
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
@@ -56,7 +58,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
 
     private val longRun = Runnable {
         longDone = true
-        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        if (pal.vibrate) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         val h = hint
         if (h != null) bubble?.text = h
         onLong?.invoke()
@@ -69,9 +71,10 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     }
 
     override fun onDraw(canvas: Canvas) {
-        val m = 3f * d
+        val m = pal.gapDp * d
         rect.set(m, m * 1.2f, width - m, height - m * 1.2f)
-        val r = if (down) 11f * d else 7f * d   // почти квадрат со скруглёнными углами
+        val base = pal.radiusPct / 100f * 24f * d      // скругление задаётся в настройках
+        val r = if (down) base + 4f * d else base
         val highlighted = active || kind == ACTION
 
         if (!(kind == FLAT && !down && !active)) {
@@ -81,12 +84,13 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
                 kind == SPECIAL -> pal.special
                 else -> pal.key
             }
+            if (kind != ACTION) bgPaint.alpha = pal.keyAlpha
             if (scallop) drawScallop(canvas, rect, bgPaint) else canvas.drawRoundRect(rect, r, r, bgPaint)
         }
 
         val color = if (highlighted) pal.onAction else pal.text
         fg.color = color
-        fg.textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, textSp, resources.displayMetrics)
+        fg.textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, textSp * pal.textScale, resources.displayMetrics)
 
         val ic = icon
         if (ic != null) {
@@ -109,7 +113,9 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
         }
     }
 
-    /** Волнистый квадрат: круги по периметру + сплошная середина (как на образце). */
+    private val scallopPath = Path()
+
+    /** Волнистый квадрат: круги по периметру + сплошная середина. Рисуется одним контуром, поэтому прозрачность ровная. */
     private fun drawScallop(c: Canvas, rc: RectF, p: Paint) {
         val w = rc.width()
         val h = rc.height()
@@ -118,16 +124,27 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
         val nw = maxOf(3, Math.round((w / r - 2f) / 1.76f) + 1)   // бугорков по ширине
         val sx = (w - 2 * r) / (nw - 1)
         val sy = (h - 2 * r) / (nh - 1)
-        c.drawRect(rc.left + r, rc.top + r, rc.right - r, rc.bottom - r, p)
+        val path = scallopPath
+        path.reset()
+        path.addRect(rc.left + r, rc.top + r, rc.right - r, rc.bottom - r, Path.Direction.CW)
         for (i in 0 until nw) {
             val x = rc.left + r + i * sx
-            c.drawCircle(x, rc.top + r, r, p)
-            c.drawCircle(x, rc.bottom - r, r, p)
+            path.addCircle(x, rc.top + r, r, Path.Direction.CW)
+            path.addCircle(x, rc.bottom - r, r, Path.Direction.CW)
         }
         for (j in 1 until nh - 1) {
             val y = rc.top + r + j * sy
-            c.drawCircle(rc.left + r, y, r, p)
-            c.drawCircle(rc.right - r, y, r, p)
+            path.addCircle(rc.left + r, y, r, Path.Direction.CW)
+            path.addCircle(rc.right - r, y, r, Path.Direction.CW)
+        }
+        c.drawPath(path, p)
+    }
+
+    private fun playKeySound() {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.playSoundEffect(if (repeatable) AudioManager.FX_KEYPRESS_DELETE else AudioManager.FX_KEYPRESS_STANDARD, 0.6f)
+        } catch (e: Exception) {
         }
     }
 
@@ -189,7 +206,8 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
                 down = true
                 longDone = false
                 invalidate()
-                if (haptic) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                if (haptic && pal.vibrate) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                if (haptic && pal.sound) playKeySound()
                 showBubble()
                 if (repeatable) {
                     onTap()

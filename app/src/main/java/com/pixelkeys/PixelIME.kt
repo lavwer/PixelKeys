@@ -4,6 +4,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -73,6 +74,9 @@ class PixelIME : InputMethodService() {
     private var keyRows = 5
     private var builtLandscape = false
     private var builtNight = false
+    private var builtSig = ""
+    private var bgBmp: Bitmap? = null
+    private var navColor = 0
     private var contentBox: FrameLayout? = null
     private var curWord = ""
     private var autoOn = true
@@ -166,7 +170,7 @@ class PixelIME : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         val sp = getSharedPreferences("ui", Context.MODE_PRIVATE)
-        val rebuild = sp.getInt("theme", 0) != themeMode || sp.getInt("height", 1) != heightMode
+        val rebuild = Palette.signature(this) != builtSig
         loadPrefs()
         loadUserWords()
         localWord.setLength(0)
@@ -195,7 +199,7 @@ class PixelIME : InputMethodService() {
     @Suppress("DEPRECATION")
     private fun styleNavBar() {
         val w = window?.window ?: return
-        w.navigationBarColor = pal.bg
+        w.navigationBarColor = if (navColor != 0) navColor else pal.bg
         val v = w.decorView
         v.systemUiVisibility = if (pal.night) {
             v.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
@@ -241,9 +245,18 @@ class PixelIME : InputMethodService() {
         mode = 0
         builtLandscape = isLandscape()
         builtNight = systemNight()
+        builtSig = Palette.signature(this)
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setBackgroundColor(pal.bg)
+        val photo = if (pal.hasPhoto) BgStore.load(this) else null
+        bgBmp = photo
+        if (photo != null) {
+            root.background = CropDrawable(photo)
+            navColor = BgStore.bottomColor(photo)
+        } else {
+            root.setBackgroundColor(pal.bg)
+            navColor = pal.bg
+        }
         root.setPadding(dp(4), dp(4), dp(4), dp(8))
 
         // верхняя панель: буфер, эмодзи, капсула с T9, запуск приложения
@@ -270,7 +283,7 @@ class PixelIME : InputMethodService() {
         capsule.orientation = LinearLayout.HORIZONTAL
         capsule.gravity = Gravity.CENTER_VERTICAL
         val capBg = GradientDrawable()
-        capBg.setColor(pal.key)
+        capBg.setColor(pal.keyA)
         capBg.cornerRadius = dp(20).toFloat()
         capsule.background = capBg
         capsule.setPadding(dp(6), 0, dp(6), 0)
@@ -1041,7 +1054,7 @@ class PixelIME : InputMethodService() {
         row.gravity = Gravity.CENTER_VERTICAL
         row.setPadding(dp(14), dp(10), dp(6), dp(10))
         val bg = GradientDrawable()
-        bg.setColor(pal.key)
+        bg.setColor(pal.keyA)
         bg.cornerRadius = dp(16).toFloat()
         row.background = bg
         row.setOnClickListener {
