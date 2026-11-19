@@ -136,8 +136,8 @@ class Corrector(private val dict: Dict) {
     }
 
     /** Исправление опечатки в слове (строчными буквами). null, если исправлять нечего или нет уверенности. */
-    fun fix(w: String, lang: Int): String? {
-        val c = search(w, lang, true)
+    fun fix(w: String, lang: Int, deep: Boolean = true): String? {
+        val c = search(w, lang, deep)
         if (c.isEmpty()) return null
         // если второй вариант почти так же хорош, не рискуем (его покажет T9 в капсуле)
         if (c.size > 1 && c[0].score - c[1].score < MARGIN) return null

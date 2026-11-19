@@ -83,6 +83,9 @@ class PixelIME : InputMethodService() {
     private var autoAny = true        // автоисправление и там, где приложение просит «без подсказок»
     private val localWord = StringBuilder()   // слово, которое мы сами набрали (на случай, если приложение отдаёт текст с задержкой)
     private var sugDelLen = 0
+    private var sugKey = ""                         // для кэша подсказок: одно и то же состояние не считаем дважды
+    private var sugCache: List<String> = emptyList()
+    private var sugDelCache = 0
     private class Corr(val original: String, val corrected: String, val sep: String)
     private var lastCorr: Corr? = null
 
@@ -174,6 +177,7 @@ class PixelIME : InputMethodService() {
         loadPrefs()
         loadUserWords()
         localWord.setLength(0)
+        sugKey = ""
         recordDiag(info)
         if (rebuild) {
             pal = Palette(this, themeMode)
@@ -257,7 +261,7 @@ class PixelIME : InputMethodService() {
             root.setBackgroundColor(pal.bg)
             navColor = pal.bg
         }
-        root.setPadding(dp(4), dp(4), dp(4), dp(8))
+        root.setPadding(dp(pal.hpadDp), dp(4), dp(pal.hpadDp), dp(pal.bpadDp))
 
         // верхняя панель: буфер, эмодзи, капсула с T9, запуск приложения
         val bar = LinearLayout(this)
@@ -727,11 +731,16 @@ class PixelIME : InputMethodService() {
         if (enabled) {
             val before = currentInputConnection?.getTextBeforeCursor(60, 0)?.toString() ?: ""
             word = resolveWord(before)
+            val key = before + "\u0001" + word + "\u0001" + dict.ready() + dict.user.size + pal.lite
+            if (key == sugKey) {
+                list = sugCache
+                sugDelLen = sugDelCache
+            } else {
             sugDelLen = word.length
             if (word.isNotEmpty()) {
                 val cyr = Layout.isCyr(word[0])
                 list = dict.suggest(if (cyr) 0 else 1, word, 3).map { matchCase(word, it) }
-                if (list.isEmpty() && word.length >= 3) {
+                if (list.isEmpty() && word.length >= 3 && !pal.lite) {
                     // слово с опечаткой: предлагаем варианты исправления
                     val low = word.lowercase()
                     val lg = if (cyr) 0 else 1
@@ -755,6 +764,10 @@ class PixelIME : InputMethodService() {
                         }
                     }
                 }
+            }
+            sugKey = key
+            sugCache = list
+            sugDelCache = sugDelLen
             }
         }
         curWord = word
@@ -859,7 +872,7 @@ class PixelIME : InputMethodService() {
             }
         }
         if (dict.known(lang, low)) return
-        val fix = corr.fix(low, lang) ?: return
+        val fix = corr.fix(low, lang, !pal.lite) ?: return
         applyCorr(ic, word, matchCase(word, fix), sep)
     }
 

@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
@@ -29,7 +30,7 @@ class SettingsActivity : Activity() {
 
     private val themes = listOf(
         "Авто (цвета обоев)", "Светлая", "Тёмная", "Серая", "Синяя",
-        "Бирюзовая", "Зелёная", "Фиолетовая", "Розовая", "Оранжевая"
+        "Бирюзовая", "Зелёная", "Фиолетовая", "Розовая", "Оранжевая", "Свой цвет"
     )
 
     private lateinit var prefs: SharedPreferences
@@ -58,7 +59,7 @@ class SettingsActivity : Activity() {
         t.text = text
         t.textSize = sp
         t.setTextColor(color)
-        if (bold) t.typeface = Typeface.DEFAULT_BOLD
+        if (bold) t.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         return t
     }
 
@@ -71,29 +72,32 @@ class SettingsActivity : Activity() {
     private fun card(): LinearLayout {
         val c = LinearLayout(this)
         c.orientation = LinearLayout.VERTICAL
-        c.background = round(pal.key, 28)
+        c.background = round(pal.container, 28)
         c.setPadding(dp(18), dp(8), dp(18), dp(8))
         return c
     }
 
     private fun section(title: String): TextView {
-        val t = tv(title, 12f, pal.accent, true)
+        // заголовки капсом приводим к обычному написанию, смешанный регистр («Стиль Material 3») оставляем как есть
+        val shown = if (title == title.uppercase()) title.lowercase().replaceFirstChar { it.uppercase() } else title
+        val t = tv(shown, 14f, pal.accent, true)
         t.setPadding(dp(8), dp(24), 0, dp(8))
         return t
     }
 
     private fun divider(): View {
         val v = View(this)
-        v.setBackgroundColor(pal.special)
+        v.setBackgroundColor(pal.line)
         return v
     }
 
     private fun pill(text: String, filled: Boolean, onClick: () -> Unit): TextView {
         val t = tv(text, 16f, if (filled) pal.onAction else pal.text, true)
         t.gravity = Gravity.CENTER
-        t.background = round(if (filled) pal.action else pal.special, 26)
+        t.background = round(if (filled) pal.action else pal.tonal, 26)
         t.setPadding(dp(16), 0, dp(16), 0)
         t.setOnClickListener { onClick() }
+        ripple(t, 26)
         return t
     }
 
@@ -115,15 +119,16 @@ class SettingsActivity : Activity() {
     private fun heroButton(text: String, primary: Boolean, onClick: () -> Unit): TextView {
         val t = tv(text, 16f, if (primary) pal.action else pal.onAction, true)
         t.gravity = Gravity.CENTER
-        t.background = round(if (primary) pal.onAction else Color.argb(48, 255, 255, 255), 28)
+        t.background = round(if (primary) pal.onAction else ((pal.onAction and 0x00FFFFFF) or (0x26 shl 24)), 28)
         t.setPadding(dp(16), 0, dp(16), 0)
         t.setOnClickListener { onClick() }
+        ripple(t, 28)
         return t
     }
 
     private fun chip(text: String): TextView {
         val t = tv(text, 12f, pal.text, true)
-        t.background = round(pal.special, 14)
+        t.background = round(pal.tonal, 14)
         t.setPadding(dp(12), dp(5), dp(12), dp(5))
         return t
     }
@@ -131,11 +136,11 @@ class SettingsActivity : Activity() {
     private fun featureCard(emoji: String, title: String, desc: String): View {
         val c = LinearLayout(this)
         c.orientation = LinearLayout.VERTICAL
-        c.background = round(pal.key, 26)
+        c.background = round(pal.container, 26)
         c.setPadding(dp(16), dp(16), dp(16), dp(18))
         val badge = tv(emoji, 22f, pal.text)
         badge.gravity = Gravity.CENTER
-        badge.background = round(pal.special, 16)
+        badge.background = round(pal.tonal, 16)
         c.addView(badge, LinearLayout.LayoutParams(dp(46), dp(46)))
         val t = tv(title, 16f, pal.text, true)
         t.setPadding(0, dp(12), 0, dp(4))
@@ -179,6 +184,7 @@ class SettingsActivity : Activity() {
         r.orientation = LinearLayout.HORIZONTAL
         r.gravity = Gravity.CENTER_VERTICAL
         r.setPadding(0, dp(14), 0, dp(14))
+        ripple(r, 12)
         r.addView(tv(title, 16f, pal.text), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         r.addView(tv(names[prefs.getInt(key, def).coerceIn(0, names.size - 1)], 15f, pal.accent, true))
         r.setOnClickListener {
@@ -198,6 +204,7 @@ class SettingsActivity : Activity() {
         r.orientation = LinearLayout.HORIZONTAL
         r.gravity = Gravity.CENTER_VERTICAL
         r.setPadding(0, dp(10), 0, dp(10))
+        ripple(r, 12)
         val left = LinearLayout(this)
         left.orientation = LinearLayout.VERTICAL
         left.addView(tv(title, 16f, pal.text))
@@ -207,13 +214,22 @@ class SettingsActivity : Activity() {
         sw.isChecked = prefs.getInt(key, def) == onWhen
         val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
         sw.thumbTintList = ColorStateList(states, intArrayOf(pal.onAction, pal.hint))
-        sw.trackTintList = ColorStateList(states, intArrayOf(pal.action, pal.pressed))
+        sw.trackTintList = ColorStateList(states, intArrayOf(pal.action, pal.line))
         sw.setOnCheckedChangeListener { _, c ->
             prefs.edit().putInt(key, if (c) onWhen else 1 - onWhen).apply()
         }
         r.addView(sw)
         r.setOnClickListener { sw.toggle() }
         return r
+    }
+
+    /** Волна при нажатии (как в Material 3): ограничена скруглённой формой элемента. */
+    private fun ripple(v: View, radiusDp: Int) {
+        val mask = GradientDrawable()
+        mask.setColor(Color.WHITE)
+        mask.cornerRadius = dp(radiusDp).toFloat()
+        val tint = (pal.text and 0x00FFFFFF) or (0x1F shl 24)
+        v.foreground = RippleDrawable(ColorStateList.valueOf(tint), null, mask)
     }
 
     private fun roundClip(v: View, radiusDp: Int) {
@@ -303,7 +319,7 @@ class SettingsActivity : Activity() {
         valueTv.text = (sb.progress + min).toString() + unit
         sb.progressTintList = ColorStateList.valueOf(pal.accent)
         sb.thumbTintList = ColorStateList.valueOf(pal.accent)
-        sb.progressBackgroundTintList = ColorStateList.valueOf(pal.pressed)
+        sb.progressBackgroundTintList = ColorStateList.valueOf(pal.tonal)
         sb.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
                 valueTv.text = (progress + min).toString() + unit
@@ -388,13 +404,13 @@ class SettingsActivity : Activity() {
         // --- главный блок (hero) ---
         val hero = LinearLayout(this)
         hero.orientation = LinearLayout.VERTICAL
-        hero.background = gradient(pal.action, shiftHue(pal.action, 42f), 32)
+        hero.background = round(pal.action, 28)
         hero.setPadding(dp(22), dp(26), dp(22), dp(22))
-        hero.addView(tv("КЛАВИАТУРА", 12f, pal.onAction, true))
+        hero.addView(tv("Клавиатура", 14f, pal.onAction, true))
         val h1 = tv("Печатай быстро.\nНикому не доверяй пароли.", 30f, pal.onAction, true)
         h1.setPadding(0, dp(6), 0, dp(10))
         hero.addView(h1)
-        hero.addView(tv("Умный T9, автоисправление, буфер обмена и 10 тем. Без доступа в интернет: набранное остаётся на телефоне.", 15f, pal.onAction))
+        hero.addView(tv("Умный T9, автоисправление, буфер обмена и 11 тем. Без доступа в интернет: набранное остаётся на телефоне.", 15f, pal.onAction))
         hero.addView(heroButton("Включить клавиатуру", true) {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
         }, lp(22, dp(54)))
@@ -404,6 +420,17 @@ class SettingsActivity : Activity() {
         hero.addView(previewCard(), lp(20))
         root.addView(hero, lp(16))
 
+        // --- оптимизация одной кнопкой ---
+        val lite = prefs.getInt("lite", 0) == 1
+        val copt = card()
+        copt.addView(tv(if (lite) "Лёгкий режим включён" else "Оптимизация", 16f, pal.text, true).apply { setPadding(0, dp(10), 0, dp(2)) })
+        copt.addView(tv("Одна кнопка отключает анимации, эффекты и увеличенную букву, а подсказки считаются легче: без поиска опечаток в T9 и глубокой проверки автоисправления. Для слабых телефонов и экономии батареи. Твои настройки не стираются: выключишь режим, и всё вернётся.", 13f, pal.hint).apply { setPadding(0, 0, 0, dp(6)) })
+        copt.addView(pill(if (lite) "Выключить лёгкий режим" else "Оптимизировать", !lite) {
+            prefs.edit().putInt("lite", if (lite) 0 else 1).apply()
+            render()
+        }, lp(8, dp(50)))
+        root.addView(copt, lp(14))
+
         // --- возможности ---
         root.addView(section("ВОЗМОЖНОСТИ"))
         root.addView(featureRow(
@@ -412,7 +439,7 @@ class SettingsActivity : Activity() {
         ), lp())
         root.addView(featureRow(
             featureCard("📋", "Буфер обмена", "История копирования с закреплением. Секретное не сохраняется."),
-            featureCard("🎨", "10 тем", "Цвета из обоев Pixel или свои: серая, синяя, зелёная и другие.")
+            featureCard("🎨", "11 тем", "Цвета из обоев Pixel или свои: серая, синяя, зелёная и другие.")
         ), lp(10))
 
         // --- как подключить ---
@@ -430,13 +457,19 @@ class SettingsActivity : Activity() {
         field.hint = "Нажми сюда и напиши что-нибудь"
         field.setTextColor(pal.text)
         field.setHintTextColor(pal.hint)
-        field.background = round(pal.key, 22)
+        field.background = round(pal.container, 22)
         field.setPadding(dp(18), dp(16), dp(18), dp(16))
         root.addView(field, lp())
 
         root.addView(section("ВНЕШНИЙ ВИД"))
         val c1 = card()
         c1.addView(choiceRow("Тема", "theme", themes, 0))
+        if (prefs.getInt("theme", 0) == 10) {
+            c1.addView(divider(), lp(0, dp(1)))
+            c1.addView(sliderRow("Оттенок", "hue", 0, 359, 210, "°"))
+            c1.addView(divider(), lp(0, dp(1)))
+            c1.addView(sliderRow("Насыщенность", "sat", 20, 100, 100, "%"))
+        }
         c1.addView(divider(), lp(0, dp(1)))
         c1.addView(choiceRow("Высота клавиш", "height", listOf("Низкая", "Средняя", "Высокая"), 1))
         c1.addView(divider(), lp(0, dp(1)))
@@ -473,7 +506,7 @@ class SettingsActivity : Activity() {
         // --- форма и размер клавиш ---
         root.addView(section("ФОРМА И РАЗМЕР КЛАВИШ"))
         val cshape = card()
-        cshape.addView(sliderRow("Скругление клавиш", "radius", 0, 100, 30, "%"))
+        cshape.addView(sliderRow("Скругление клавиш", "radius", 0, 100, 50, "%"))
         cshape.addView(divider(), lp(0, dp(1)))
         cshape.addView(sliderRow("Прозрачность клавиш", "keyalpha", 30, 100, 100, "%"))
         cshape.addView(divider(), lp(0, dp(1)))
@@ -481,6 +514,33 @@ class SettingsActivity : Activity() {
         cshape.addView(divider(), lp(0, dp(1)))
         cshape.addView(sliderRow("Расстояние между клавишами", "gap", 0, 8, 3, " dp"))
         root.addView(cshape, lp())
+
+        // --- кастом в стиле ма3 ---
+        root.addView(section("Стиль Material 3"))
+        val cm3 = card()
+        cm3.addView(choiceRow("Форма служебных клавиш", "shape", listOf("Волнистая", "Скруглённая", "Капсула"), 0))
+        cm3.addView(divider(), lp(0, dp(1)))
+        cm3.addView(choiceRow("Начертание букв", "font", listOf("Обычное", "Среднее", "Жирное"), 0))
+        cm3.addView(divider(), lp(0, dp(1)))
+        cm3.addView(switchRow("Анимация нажатия", "Клавиша на миг становится капсулой", "morph", 0, 0))
+        cm3.addView(divider(), lp(0, dp(1)))
+        cm3.addView(switchRow("Подсказки на клавишах", "Мелкие символы в углу: ё, ъ, ?, !", "hints", 0, 0))
+        cm3.addView(divider(), lp(0, dp(1)))
+        cm3.addView(switchRow("Увеличенная буква", "Показывать над клавишей при нажатии", "bubble", 0, 0))
+        cm3.addView(divider(), lp(0, dp(1)))
+        cm3.addView(sliderRow("Отступ снизу", "bpad", 0, 32, 8, " dp"))
+        cm3.addView(divider(), lp(0, dp(1)))
+        cm3.addView(sliderRow("Отступы по бокам", "hpad", 0, 16, 4, " dp"))
+        root.addView(cm3, lp())
+
+        // --- эффекты после нажатия ---
+        root.addView(section("Эффекты нажатия"))
+        val cfx2 = card()
+        cfx2.addView(switchRow("Эффекты при нажатии", "Короткая анимация внутри клавиши после касания", "fxon", 1, 0))
+        cfx2.addView(divider(), lp(0, dp(1)))
+        cfx2.addView(choiceRow("Эффект", "fx", listOf("Волна", "Кольцо", "Свечение", "Пиксели", "Искры"), 0))
+        cfx2.addView(tv("Нажми на клавиши мини-клавиатуры вверху, чтобы посмотреть эффект. В лёгком режиме эффекты выключены.", 13f, pal.hint).apply { setPadding(0, dp(4), 0, dp(10)) })
+        root.addView(cfx2, lp())
 
         root.addView(section("ОТКЛИК"))
         val cfx = card()
@@ -490,7 +550,8 @@ class SettingsActivity : Activity() {
         root.addView(cfx, lp())
         root.addView(pill("Сбросить оформление", false) {
             val e = prefs.edit()
-            for (k in listOf("radius", "keyalpha", "textsize", "gap", "bgblur", "bgdim", "vibrate", "sound")) e.remove(k)
+            for (k in listOf("radius", "keyalpha", "textsize", "gap", "bgblur", "bgdim", "vibrate", "sound",
+                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx")) e.remove(k)
             e.apply()
             BgStore.clear(this)
             render()
@@ -571,7 +632,7 @@ class SettingsActivity : Activity() {
         root.addView(foot2)
 
         val sv = ScrollView(this)
-        sv.setBackgroundColor(pal.bg)
+        sv.setBackgroundColor(pal.surface)
         sv.isVerticalScrollBarEnabled = false
         sv.addView(root)
         setContentView(sv)
@@ -582,8 +643,8 @@ class SettingsActivity : Activity() {
 
     @Suppress("DEPRECATION")
     private fun applyBars() {
-        window.statusBarColor = pal.bg
-        window.navigationBarColor = pal.bg
+        window.statusBarColor = pal.surface
+        window.navigationBarColor = pal.surface
         val light = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         val f = window.decorView.systemUiVisibility
         window.decorView.systemUiVisibility = if (pal.night) f and light.inv() else f or light
