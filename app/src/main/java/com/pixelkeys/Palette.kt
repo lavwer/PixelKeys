@@ -23,7 +23,7 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
         fun signature(ctx: Context): String {
             val sp = ctx.getSharedPreferences("ui", Context.MODE_PRIVATE)
             val keys = listOf("theme", "height", "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "bgblur", "bgdim",
-                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "lite")
+                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "dev", "devrow", "dh", "rainbow", "fxdur", "fxpow", "aggr")
             return keys.joinToString(",") { sp.getInt(it, -1).toString() } + "," + BgStore.stamp(ctx)
         }
     }
@@ -38,17 +38,24 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
     val sound = sp.getInt("sound", 1) == 0
 
     // ---- кастом в стиле ма3 ----
-    // лёгкий режим (кнопка «Оптимизировать»): отключает анимации, эффекты и увеличенную букву, подсказки считаются легче
-    val lite = sp.getInt("lite", 0) == 1
     // эффект после нажатия: 0 = нет, 1 = волна, 2 = кольцо, 3 = свечение, 4 = пиксели, 5 = искры
-    val effect = if (lite || sp.getInt("fxon", 1) != 0) 0 else sp.getInt("fx", 0).coerceIn(0, 4) + 1
+    val dev = sp.getInt("dev", 0) == 1                              // режим разработчика
+    val effect = if (sp.getInt("fxon", 1) != 0) 0 else sp.getInt("fx", 0).coerceIn(0, if (dev) 7 else 4) + 1
     val font = sp.getInt("font", 0).coerceIn(0, 2)                 // 0 = обычное, 1 = среднее, 2 = жирное
     val keyShape = sp.getInt("shape", 0).coerceIn(0, 2)            // служебные клавиши: 0 = волнистая, 1 = скруглённая, 2 = капсула
-    val morphOn = !lite && sp.getInt("morph", 0) == 0                       // клавиша при нажатии становится капсулой
+    val morphOn = sp.getInt("morph", 0) == 0                       // клавиша при нажатии становится капсулой
     val showHints = sp.getInt("hints", 0) == 0                     // мелкие символы в углу клавиш
-    val previewBubble = !lite && sp.getInt("bubble", 0) == 0                // увеличенная буква над клавишей
+    val previewBubble = sp.getInt("bubble", 0) == 0                // увеличенная буква над клавишей
     val bpadDp = sp.getInt("bpad", 8).coerceIn(0, 32)              // отступ снизу
     val hpadDp = sp.getInt("hpad", 4).coerceIn(0, 16)              // отступы по бокам
+
+    // ---- режим разработчика: всё это действует, только пока он включён ----
+    val devRowOn = dev && sp.getInt("devrow", 1) == 0                // ряд программиста: Tab, стрелки, скобки
+    val devRowDp = if (dev) sp.getInt("dh", 0).coerceIn(0, 110) else 0   // точная высота ряда, 0 = обычная
+    val rainbow = dev && sp.getInt("rainbow", 1) == 0               // радужные клавиши
+    val fxDur = if (dev) sp.getInt("fxdur", 420).coerceIn(120, 1600) else 420
+    val fxPow = if (dev) sp.getInt("fxpow", 100).coerceIn(20, 100) else 100
+    val aggr = if (dev) sp.getInt("aggr", 5).coerceIn(1, 9) else 5   // смелость автоисправления
 
     /** Шрифт клавиш: medium = служебные клавиши в ма3 всегда средние, если не выбрано жирное. */
     fun typeface(medium: Boolean): Typeface = when {

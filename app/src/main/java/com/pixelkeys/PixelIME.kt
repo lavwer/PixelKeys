@@ -134,6 +134,7 @@ class PixelIME : InputMethodService() {
         autoAny = sp.getInt("autoany", 0) == 0
         numMode = sp.getInt("numrow", 1)
         minimal = sp.getInt("minimal", 0) == 1
+        corr.aggr = if (sp.getInt("dev", 0) == 1) sp.getInt("aggr", 5).coerceIn(1, 9) else 5
     }
 
     override fun onEvaluateFullscreenMode() = false
@@ -234,10 +235,12 @@ class PixelIME : InputMethodService() {
     }
 
     private fun rowH(): Int {
+        if (::pal.isInitialized && pal.devRowDp > 0) return dp(pal.devRowDp)   // режим разработчика: точная высота
         val base = if (isLandscape()) 34 else 46
         val scale = when (heightMode) {
             0 -> 0.88f
             2 -> 1.15f
+            3 -> 1.3f
             else -> 1f
         }
         return dp((base * scale).toInt())
@@ -433,6 +436,29 @@ class PixelIME : InputMethodService() {
         return k
     }
 
+    private fun devRowKeys(): List<Key> {
+        val out = ArrayList<Key>()
+        val tab = Key(this, pal, Key.SPECIAL)
+        tab.weight = 1.4f
+        tab.textSp = 13f
+        tab.label = "Tab"
+        tab.onTap = { currentInputConnection?.commitText("\t", 1) }
+        out.add(tab)
+        out.add(arrowKey("←", KeyEvent.KEYCODE_DPAD_LEFT))
+        out.add(arrowKey("→", KeyEvent.KEYCODE_DPAD_RIGHT))
+        for (ch in "{}()[]<>") out.add(charKey(ch.toString(), false, 16f))
+        return out
+    }
+
+    private fun arrowKey(text: String, code: Int): Key {
+        val k = Key(this, pal, Key.SPECIAL)
+        k.textSp = 16f
+        k.label = text
+        k.repeatable = true
+        k.onTap = { sendDownUpKeyEvents(code) }
+        return k
+    }
+
     private fun backKey(w: Float) = Key(this, pal, Key.SPECIAL).apply {
         weight = w
         scallop = true
@@ -464,6 +490,12 @@ class PixelIME : InputMethodService() {
         // ряд цифр: на страницах цифр/символов он нужен всегда, на буквенной — по настройке
         if (page != 0 || showNumRowOnLetters()) {
             addRow(box, "1234567890".map { charKey(it.toString(), false, 18f) }, 10f)
+            count++
+        }
+
+        // ряд программиста (режим разработчика): Tab, стрелки и скобки
+        if (page == 0 && pal.devRowOn) {
+            addRow(box, devRowKeys(), 11.4f)
             count++
         }
 
@@ -731,7 +763,7 @@ class PixelIME : InputMethodService() {
         if (enabled) {
             val before = currentInputConnection?.getTextBeforeCursor(60, 0)?.toString() ?: ""
             word = resolveWord(before)
-            val key = before + "\u0001" + word + "\u0001" + dict.ready() + dict.user.size + pal.lite
+            val key = before + "\u0001" + word + "\u0001" + dict.ready() + dict.user.size
             if (key == sugKey) {
                 list = sugCache
                 sugDelLen = sugDelCache
@@ -740,7 +772,7 @@ class PixelIME : InputMethodService() {
             if (word.isNotEmpty()) {
                 val cyr = Layout.isCyr(word[0])
                 list = dict.suggest(if (cyr) 0 else 1, word, 3).map { matchCase(word, it) }
-                if (list.isEmpty() && word.length >= 3 && !pal.lite) {
+                if (list.isEmpty() && word.length >= 3) {
                     // слово с опечаткой: предлагаем варианты исправления
                     val low = word.lowercase()
                     val lg = if (cyr) 0 else 1
@@ -872,7 +904,7 @@ class PixelIME : InputMethodService() {
             }
         }
         if (dict.known(lang, low)) return
-        val fix = corr.fix(low, lang, !pal.lite) ?: return
+        val fix = corr.fix(low, lang) ?: return
         applyCorr(ic, word, matchCase(word, fix), sep)
     }
 

@@ -38,6 +38,9 @@ class Corrector(private val dict: Dict) {
         const val MARGIN = 0.8
     }
 
+    /** 1..9: чем больше, тем смелее исправляет (5 = как обычно). Меняется только в режиме разработчика. */
+    var aggr = 5
+
     private val ruAlpha = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
     private val enAlpha = "abcdefghijklmnopqrstuvwxyz"
     private val ruPhon = pairs("ао", "еи", "ея", "иы", "ъь", "сз", "тд", "пб", "фв", "гк", "жш", "чщ", "эе", "ёе", "ую")
@@ -123,14 +126,14 @@ class Corrector(private val dict: Dict) {
         }
 
         edits1(w, alpha, nb, phon, true, true) { c, p -> consider(c, p) }
-        var limit = -13.5
+        var limit = -13.5 - (aggr - 5) * 0.3
         if (found.isEmpty() && allowD2 && w.length in 5..11) {
             val first = ArrayList<Pair<String, Double>>()
             edits1(w, alpha, nb, phon, true, true) { c, p -> first.add(Pair(c, p)) }
             for ((s1, p1) in first) {
                 edits1(s1, alpha, nb, phon, false, false) { c, p -> consider(c, p1 + p + 0.7) }
             }
-            limit = -13.0
+            limit = -13.0 - (aggr - 5) * 0.3
         }
         return found.entries.filter { it.value > limit }.map { Cand(it.key, it.value) }.sortedByDescending { it.score }.take(5)
     }
@@ -140,7 +143,7 @@ class Corrector(private val dict: Dict) {
         val c = search(w, lang, deep)
         if (c.isEmpty()) return null
         // если второй вариант почти так же хорош, не рискуем (его покажет T9 в капсуле)
-        if (c.size > 1 && c[0].score - c[1].score < MARGIN) return null
+        if (c.size > 1 && c[0].score - c[1].score < (1.8 - 0.2 * aggr)) return null
         return c[0].word
     }
 

@@ -2,12 +2,15 @@ package com.pixelkeys
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Outline
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
@@ -18,6 +21,7 @@ import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -38,11 +42,35 @@ class SettingsActivity : Activity() {
     private lateinit var kbPal: Palette      // как выглядит сама клавиатура (с учётом фото)
     private var scroll: ScrollView? = null
 
+    // ---- островок внизу и две страницы: «Управление» и «Практика» ----
+    private var page = 0
+    private lateinit var holder: FrameLayout
+    private var island: View? = null
+    private val islandItems = ArrayList<TextView>()
+    private var controlsView: View? = null
+    private var practice: PracticePage? = null
+    private var practiceView: View? = null
+
+    private var greetTaps = 0
+    private var greetLast = 0L
+
+    private val codeKeys = listOf(
+        "theme", "height", "punct", "t9", "autocorr", "autoany", "numrow", "minimal",
+        "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "fxon", "fx", "font", "shape", "morph", "hints",
+        "bubble", "bpad", "hpad", "hue", "sat", "dh", "devrow", "rainbow", "fxdur", "fxpow", "aggr"
+    )
+    private val codeMax = mapOf("theme" to 10, "height" to 3, "numrow" to 2, "shape" to 2, "font" to 2, "fx" to 7)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         actionBar?.hide()
         prefs = getSharedPreferences("ui", MODE_PRIVATE)
         render()
+    }
+
+    override fun onPause() {
+        practice?.stop()
+        super.onPause()
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -277,6 +305,7 @@ class SettingsActivity : Activity() {
             val k = Key(this, kb, Key.NORMAL)
             k.label = ch.toString()
             k.haptic = false
+            k.onTap = { greetTap() }
             row1.addView(k, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
         }
         outer.addView(row1, lp(0, dp(46)))
@@ -378,7 +407,7 @@ class SettingsActivity : Activity() {
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setPadding(dp(16), dp(28), dp(16), dp(40))
+        root.setPadding(dp(16), dp(28), dp(16), dp(110))
 
         // --- шапка сайта: логотип, название, версия ---
         val ver = try {
@@ -398,7 +427,7 @@ class SettingsActivity : Activity() {
         val brand = tv("Pixel Keys", 20f, pal.text, true)
         brand.setPadding(dp(12), 0, 0, 0)
         nav.addView(brand, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        nav.addView(chip("v$ver"))
+        nav.addView(chip(if (prefs.getInt("dev", 0) == 1) "v$ver · dev" else "v$ver"))
         root.addView(nav, lp(0, dp(48)))
 
         // --- главный блок (hero) ---
@@ -420,16 +449,7 @@ class SettingsActivity : Activity() {
         hero.addView(previewCard(), lp(20))
         root.addView(hero, lp(16))
 
-        // --- оптимизация одной кнопкой ---
-        val lite = prefs.getInt("lite", 0) == 1
-        val copt = card()
-        copt.addView(tv(if (lite) "Лёгкий режим включён" else "Оптимизация", 16f, pal.text, true).apply { setPadding(0, dp(10), 0, dp(2)) })
-        copt.addView(tv("Одна кнопка отключает анимации, эффекты и увеличенную букву, а подсказки считаются легче: без поиска опечаток в T9 и глубокой проверки автоисправления. Для слабых телефонов и экономии батареи. Твои настройки не стираются: выключишь режим, и всё вернётся.", 13f, pal.hint).apply { setPadding(0, 0, 0, dp(6)) })
-        copt.addView(pill(if (lite) "Выключить лёгкий режим" else "Оптимизировать", !lite) {
-            prefs.edit().putInt("lite", if (lite) 0 else 1).apply()
-            render()
-        }, lp(8, dp(50)))
-        root.addView(copt, lp(14))
+        if (prefs.getInt("dev", 0) == 1) addDevSection(root)
 
         // --- возможности ---
         root.addView(section("ВОЗМОЖНОСТИ"))
@@ -471,7 +491,7 @@ class SettingsActivity : Activity() {
             c1.addView(sliderRow("Насыщенность", "sat", 20, 100, 100, "%"))
         }
         c1.addView(divider(), lp(0, dp(1)))
-        c1.addView(choiceRow("Высота клавиш", "height", listOf("Низкая", "Средняя", "Высокая"), 1))
+        c1.addView(choiceRow("Высота клавиш", "height", listOf("Низкая", "Средняя", "Высокая", "Очень высокая"), 1))
         c1.addView(divider(), lp(0, dp(1)))
         c1.addView(choiceRow("Ряд цифр", "numrow", listOf("Всегда", "Только вертикально", "Скрыть"), 1))
         root.addView(c1, lp())
@@ -538,8 +558,14 @@ class SettingsActivity : Activity() {
         val cfx2 = card()
         cfx2.addView(switchRow("Эффекты при нажатии", "Короткая анимация внутри клавиши после касания", "fxon", 1, 0))
         cfx2.addView(divider(), lp(0, dp(1)))
-        cfx2.addView(choiceRow("Эффект", "fx", listOf("Волна", "Кольцо", "Свечение", "Пиксели", "Искры"), 0))
-        cfx2.addView(tv("Нажми на клавиши мини-клавиатуры вверху, чтобы посмотреть эффект. В лёгком режиме эффекты выключены.", 13f, pal.hint).apply { setPadding(0, dp(4), 0, dp(10)) })
+        val fxNames = if (prefs.getInt("dev", 0) == 1) {
+            listOf("Волна", "Кольцо", "Свечение", "Пиксели", "Искры", "Радуга", "Конфетти", "Неон")
+        } else {
+            listOf("Волна", "Кольцо", "Свечение", "Пиксели", "Искры")
+        }
+        if (prefs.getInt("fx", 0) >= fxNames.size) prefs.edit().putInt("fx", fxNames.size - 1).apply()
+        cfx2.addView(choiceRow("Эффект", "fx", fxNames, 0))
+        cfx2.addView(tv("Нажми на клавиши мини-клавиатуры вверху, чтобы посмотреть эффект.", 13f, pal.hint).apply { setPadding(0, dp(4), 0, dp(10)) })
         root.addView(cfx2, lp())
 
         root.addView(section("ОТКЛИК"))
@@ -635,10 +661,217 @@ class SettingsActivity : Activity() {
         sv.setBackgroundColor(pal.surface)
         sv.isVerticalScrollBarEnabled = false
         sv.addView(root)
-        setContentView(sv)
         scroll = sv
+        mount(sv)
         if (oldY > 0) sv.post { sv.scrollTo(0, oldY) }
         applyBars()
+    }
+
+    /** Нажатия на слово «приветик» в мини-клавиатуре: серия нажатий переключает режим разработчика. */
+    private fun greetTap() {
+        val now = System.currentTimeMillis()
+        greetTaps = if (now - greetLast > 2000L) 1 else greetTaps + 1
+        greetLast = now
+        val dev = prefs.getInt("dev", 0) == 1
+        if (!dev && greetTaps >= 5) {
+            greetTaps = 0
+            prefs.edit().putInt("dev", 1).apply()
+            Toast.makeText(this, "🧪 Режим разработчика включён", Toast.LENGTH_SHORT).show()
+            window.decorView.post { render() }
+        } else if (dev && greetTaps >= 3) {
+            greetTaps = 0
+            prefs.edit().putInt("dev", 0).apply()
+            Toast.makeText(this, "Режим разработчика выключен", Toast.LENGTH_SHORT).show()
+            window.decorView.post { render() }
+        }
+    }
+
+    private fun addDevSection(root: LinearLayout) {
+        val head = LinearLayout(this)
+        head.orientation = LinearLayout.VERTICAL
+        head.background = round(pal.tonal, 28)
+        head.setPadding(dp(20), dp(18), dp(20), dp(18))
+        head.addView(tv("🧪 Режим разработчика", 20f, pal.text, true))
+        head.addView(tv("Безумные настройки: точная высота, ряд программиста, радужные клавиши, ещё три эффекта, смелость автоисправления и перенос настроек на другой телефон.", 13f, pal.hint).apply { setPadding(0, dp(6), 0, 0) })
+        root.addView(head, lp(14))
+
+        root.addView(section("Клавиатура (dev)"))
+        val d1 = card()
+        d1.addView(sliderRow("Точная высота ряда", "dh", 0, 110, 0, " dp"))
+        d1.addView(tv("0 — использовать обычную высоту (низкая, средняя, высокая, очень высокая).", 12f, pal.hint).apply { setPadding(0, 0, 0, dp(8)) })
+        d1.addView(divider(), lp(0, dp(1)))
+        d1.addView(switchRow("Ряд программиста", "Tab, стрелки и { } ( ) [ ] < > над буквами", "devrow", 1, 0))
+        d1.addView(divider(), lp(0, dp(1)))
+        d1.addView(switchRow("Радужные клавиши", "Каждая буква своего цвета", "rainbow", 1, 0))
+        root.addView(d1, lp())
+
+        root.addView(section("Эффекты (dev)"))
+        val d2 = card()
+        d2.addView(sliderRow("Длительность эффекта", "fxdur", 120, 1600, 420, " мс"))
+        d2.addView(divider(), lp(0, dp(1)))
+        d2.addView(sliderRow("Сила эффекта", "fxpow", 20, 100, 100, "%"))
+        d2.addView(tv("Три новых эффекта (радуга, конфетти, неон) есть в списке эффектов ниже. Включи эффекты и выбери один.", 12f, pal.hint).apply { setPadding(0, 0, 0, dp(10)) })
+        root.addView(d2, lp())
+
+        root.addView(section("Автоисправление (dev)"))
+        val d3 = card()
+        d3.addView(sliderRow("Смелость исправления", "aggr", 1, 9, 5, ""))
+        d3.addView(tv("5 — как обычно. Больше — исправляет смелее и чаще ошибается, меньше — осторожнее.", 12f, pal.hint).apply { setPadding(0, 0, 0, dp(10)) })
+        root.addView(d3, lp())
+
+        root.addView(section("Инструменты (dev)"))
+        val d4 = card()
+        d4.addView(tv("Перенос на другой телефон: здесь нажми «Скопировать код», отправь его себе в мессенджер, а на другом телефоне открой «Вставить код».", 13f, pal.hint).apply { setPadding(0, dp(12), 0, dp(10)) })
+        d4.addView(pill("Скопировать код настроек", true) { copySettingsCode() }, lp(0, dp(52)))
+        d4.addView(pill("Вставить код из буфера", false) { pasteSettingsCode() }, lp(10, dp(52)))
+        d4.addView(pill("Сбросить все настройки", false) { confirmReset() }, lp(10, dp(52)))
+        d4.addView(tv("Фон-фото и рекорды в код не входят.", 12f, pal.hint).apply { setPadding(0, dp(10), 0, dp(12)) })
+        root.addView(d4, lp())
+
+        root.addView(section("Текущие значения (dev)"))
+        val d5 = card()
+        val dump = tv(dumpText(), 12f, pal.text)
+        dump.typeface = Typeface.MONOSPACE
+        dump.setPadding(0, dp(12), 0, dp(12))
+        d5.addView(dump)
+        root.addView(d5, lp())
+    }
+
+    private fun copySettingsCode() {
+        val sb = StringBuilder("PXK1")
+        for (k in codeKeys) {
+            if (prefs.contains(k)) sb.append('\n').append(k).append('=').append(prefs.getInt(k, 0))
+        }
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("Pixel Keys", sb.toString()))
+        Toast.makeText(this, "Код настроек скопирован", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun pasteSettingsCode() {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = cm.primaryClip
+        val text = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(this).toString() else ""
+        val lines = text.trim().split("\n").map { it.trim() }
+        if (lines.isEmpty() || lines[0] != "PXK1") {
+            Toast.makeText(this, "В буфере нет кода настроек", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val ed = prefs.edit()
+        var n = 0
+        for (i in 1 until lines.size) {
+            val parts = lines[i].split("=")
+            if (parts.size != 2) continue
+            val key = parts[0].trim()
+            val v = parts[1].trim().toIntOrNull() ?: continue
+            if (key in codeKeys) {
+                ed.putInt(key, v.coerceIn(0, codeMax[key] ?: 1000000))
+                n++
+            }
+        }
+        ed.apply()
+        Toast.makeText(this, "Применено настроек: $n", Toast.LENGTH_SHORT).show()
+        render()
+    }
+
+    private fun confirmReset() {
+        AlertDialog.Builder(this)
+            .setTitle("Сбросить все настройки?")
+            .setMessage("Вернутся значения по умолчанию. Фон-фото и рекорды останутся.")
+            .setPositiveButton("Сбросить") { _, _ ->
+                val ed = prefs.edit()
+                for (k in codeKeys) ed.remove(k)
+                ed.apply()
+                render()
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun dumpText(): String {
+        val sb = StringBuilder()
+        for (k in codeKeys.sorted()) {
+            if (prefs.contains(k)) sb.append(k).append(" = ").append(prefs.getInt(k, 0)).append('\n')
+        }
+        return if (sb.isEmpty()) "Всё по умолчанию" else sb.toString().trimEnd()
+    }
+
+    /** Собирает экран: страница + плавающий островок ма3 внизу. */
+    private fun mount(controls: View) {
+        practice?.stop()
+        practice = null          // перекрасится при открытии: цвета темы могли поменяться
+        practiceView = null
+        controlsView = controls
+        val host = FrameLayout(this)
+        host.setBackgroundColor(pal.surface)
+        holder = FrameLayout(this)
+        host.addView(holder, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        val isl = buildIsland()
+        val ip = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+        ip.bottomMargin = dp(16)
+        host.addView(isl, ip)
+        island = isl
+        // когда открыта клавиатура, островок прячем, чтобы не закрывал поле ввода
+        host.viewTreeObserver.addOnGlobalLayoutListener {
+            val r = Rect()
+            host.getWindowVisibleDisplayFrame(r)
+            val full = host.rootView.height
+            val kb = full > 0 && (full - r.bottom) > full * 0.15f
+            island?.visibility = if (kb) View.GONE else View.VISIBLE
+        }
+        setContentView(host)
+        showPage(page)
+    }
+
+    private fun showPage(p: Int) {
+        if (page == 1 && p != 1) practice?.stop()
+        page = p
+        holder.removeAllViews()
+        if (p == 0) {
+            holder.addView(controlsView)
+        } else {
+            if (practiceView == null) {
+                val pg = PracticePage(this, pal, prefs)
+                practice = pg
+                practiceView = pg.view()
+            }
+            holder.addView(practiceView)
+        }
+        updateIsland()
+    }
+
+    private fun buildIsland(): View {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.HORIZONTAL
+        box.gravity = Gravity.CENTER_VERTICAL
+        box.setPadding(dp(6), dp(6), dp(6), dp(6))
+        box.background = round(pal.container, 32)
+        box.elevation = dp(8).toFloat()
+        islandItems.clear()
+        val names = listOf("⚙️  Управление", "🎮  Практика")
+        for (i in names.indices) {
+            val t = tv(names[i], 15f, pal.text, true)
+            t.gravity = Gravity.CENTER
+            t.minWidth = dp(128)
+            t.setPadding(dp(20), 0, dp(20), 0)
+            t.setOnClickListener { showPage(i) }
+            ripple(t, 26)
+            box.addView(t, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(52)))
+            islandItems.add(t)
+        }
+        return box
+    }
+
+    private fun updateIsland() {
+        for (i in islandItems.indices) {
+            val t = islandItems[i]
+            if (i == page) {
+                t.background = round(pal.tonal, 26)
+                t.setTextColor(pal.text)
+            } else {
+                t.background = null
+                t.setTextColor(pal.hint)
+            }
+        }
     }
 
     @Suppress("DEPRECATION")

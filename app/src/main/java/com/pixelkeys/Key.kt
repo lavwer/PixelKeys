@@ -88,6 +88,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
             bgPaint.color = when {
                 down && kind != ACTION -> pal.keyDown
                 highlighted -> pal.action
+                pal.rainbow && kind == NORMAL -> rainbowColor()
                 kind == SPECIAL -> pal.special
                 else -> pal.key
             }
@@ -139,6 +140,17 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     private val fxAng = FloatArray(10)
     private val fxSpd = FloatArray(10)
     private val fxRnd = java.util.Random()
+    private val hsv = FloatArray(3)
+
+    /** Режим разработчика: цвет зависит от положения клавиши, получается радуга по всей клавиатуре. */
+    private fun rainbowColor(): Int {
+        val p = parent as? View
+        val rw = maxOf(1, rootView.width)
+        hsv[0] = (((left + width / 2f) * 360f / rw) + (p?.top ?: 0) * 0.35f) % 360f
+        hsv[1] = if (pal.night) 0.55f else 0.30f
+        hsv[2] = if (pal.night) 0.55f else 0.98f
+        return android.graphics.Color.HSVToColor(hsv)
+    }
 
     private fun startFx(x: Float, y: Float) {
         if (pal.effect == 0 || kind == FLAT) return
@@ -150,7 +162,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
         }
         fxAnim?.cancel()
         val a = ValueAnimator.ofFloat(0f, 1f)
-        a.duration = 420L
+        a.duration = pal.fxDur.toLong()
         a.addUpdateListener {
             fxT = it.animatedValue as Float
             invalidate()
@@ -164,6 +176,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
         val t = fxT
         if (t >= 1f || pal.effect == 0) return
         val fade = 1f - t
+        val k = pal.fxPow / 100f
         c.save()
         fxPath.reset()
         fxPath.addRoundRect(rect, r, r, Path.Direction.CW)
@@ -173,26 +186,26 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
             1 -> {   // волна
                 fxPaint.style = Paint.Style.FILL
                 fxPaint.color = pal.action
-                fxPaint.alpha = (fade * 140).toInt()
+                fxPaint.alpha = (fade * 140 * k).toInt()
                 c.drawCircle(fxX, fxY, t * far, fxPaint)
             }
             2 -> {   // кольцо
                 fxPaint.style = Paint.Style.STROKE
                 fxPaint.strokeWidth = (1f + 3f * fade) * d
                 fxPaint.color = pal.action
-                fxPaint.alpha = (fade * 255).toInt()
+                fxPaint.alpha = (fade * 255 * k).toInt()
                 c.drawCircle(fxX, fxY, t * far, fxPaint)
             }
             3 -> {   // свечение
                 fxPaint.style = Paint.Style.FILL
                 fxPaint.color = pal.action
-                fxPaint.alpha = (fade * fade * 190).toInt()
+                fxPaint.alpha = (fade * fade * 190 * k).toInt()
                 c.drawRect(rect, fxPaint)
             }
             4 -> {   // пиксели
                 fxPaint.style = Paint.Style.FILL
                 fxPaint.color = pal.action
-                fxPaint.alpha = (fade * 255).toInt()
+                fxPaint.alpha = (fade * 255 * k).toInt()
                 val s = (2f + 5f * fade) * d
                 for (i in 0 until 10) {
                     val dist = t * fxSpd[i] * 36f * d
@@ -206,11 +219,42 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
                 val rad = (0.8f + 2.6f * fade) * d
                 for (i in 0 until 10) {
                     fxPaint.color = if (i % 2 == 0) pal.action else pal.accent
-                    fxPaint.alpha = (fade * 255).toInt()
+                    fxPaint.alpha = (fade * 255 * k).toInt()
                     val px = fxX + (fxAng[i] / 6.2831855f - 0.5f) * 44f * d * t
                     val py = fxY - t * fxSpd[i] * 30f * d
                     c.drawCircle(px, py, rad, fxPaint)
                 }
+            }
+            6 -> {   // радуга: волна, которая меняет цвет
+                hsv[0] = (t * 360f + fxX * 0.5f) % 360f
+                hsv[1] = 0.65f
+                hsv[2] = 1f
+                fxPaint.style = Paint.Style.FILL
+                fxPaint.color = android.graphics.Color.HSVToColor(hsv)
+                fxPaint.alpha = (fade * 160 * k).toInt()
+                c.drawCircle(fxX, fxY, t * far, fxPaint)
+            }
+            7 -> {   // конфетти: разноцветные квадраты разлетаются и падают
+                fxPaint.style = Paint.Style.FILL
+                val s = (3f + 3f * fade) * d
+                for (i in 0 until 10) {
+                    hsv[0] = i * 36f
+                    hsv[1] = 0.7f
+                    hsv[2] = 1f
+                    fxPaint.color = android.graphics.Color.HSVToColor(hsv)
+                    fxPaint.alpha = (fade * 255 * k).toInt()
+                    val dist = t * fxSpd[i] * 30f * d
+                    val px = fxX + Math.cos(fxAng[i].toDouble()).toFloat() * dist
+                    val py = fxY + Math.sin(fxAng[i].toDouble()).toFloat() * dist + t * t * 26f * d
+                    c.drawRect(px - s / 2f, py - s / 2f, px + s / 2f, py + s / 2f, fxPaint)
+                }
+            }
+            8 -> {   // неон: контур клавиши вспыхивает
+                fxPaint.style = Paint.Style.STROKE
+                fxPaint.strokeWidth = (2f + 5f * fade) * d
+                fxPaint.color = pal.accent
+                fxPaint.alpha = (fade * 255 * k).toInt()
+                c.drawRoundRect(rect, r, r, fxPaint)
             }
         }
         c.restore()
