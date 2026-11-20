@@ -264,7 +264,7 @@ class PixelIME : InputMethodService() {
             root.setBackgroundColor(pal.bg)
             navColor = pal.bg
         }
-        root.setPadding(dp(pal.hpadDp), dp(4), dp(pal.hpadDp), dp(pal.bpadDp))
+        root.setPadding(dp(pal.hpadDp), dp(4 + (if (pal.nyGarland) NewYearOverlay.GARLAND_DP else 0)), dp(pal.hpadDp), dp(pal.bpadDp))
 
         // верхняя панель: буфер, эмодзи, капсула с T9, запуск приложения
         val bar = LinearLayout(this)
@@ -395,7 +395,12 @@ class PixelIME : InputMethodService() {
         root.addView(bar, LinearLayout.LayoutParams(MATCH, barH()))
         root.addView(content, LinearLayout.LayoutParams(MATCH, rowH() * 5))
         renderKeys()
-        return root
+        if (!pal.ny) return root
+        // новогодний режим: поверх клавиатуры лежит слой с гирляндой, снегом и всплесками
+        val host = FrameLayout(this)
+        host.addView(root, FrameLayout.LayoutParams(MATCH, FrameLayout.LayoutParams.WRAP_CONTENT))
+        host.addView(NewYearOverlay(this, pal), FrameLayout.LayoutParams(MATCH, MATCH))
+        return host
     }
 
     private fun openApp() {

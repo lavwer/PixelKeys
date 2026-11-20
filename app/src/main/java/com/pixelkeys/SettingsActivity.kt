@@ -51,15 +51,17 @@ class SettingsActivity : Activity() {
     private var practice: PracticePage? = null
     private var practiceView: View? = null
 
+    private val liveKeys = setOf("fxon", "morph", "hints", "bubble", "rainbow", "devrow", "ny", "nygar", "nysnow", "nytheme")
     private var greetTaps = 0
     private var greetLast = 0L
 
     private val codeKeys = listOf(
         "theme", "height", "punct", "t9", "autocorr", "autoany", "numrow", "minimal",
         "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "fxon", "fx", "font", "shape", "morph", "hints",
-        "bubble", "bpad", "hpad", "hue", "sat", "dh", "devrow", "rainbow", "fxdur", "fxpow", "aggr"
+        "bubble", "bpad", "hpad", "hue", "sat", "dh", "devrow", "rainbow", "fxdur", "fxpow", "aggr",
+        "ny", "nygar", "nysnow", "nyfx", "nytheme"
     )
-    private val codeMax = mapOf("theme" to 10, "height" to 3, "numrow" to 2, "shape" to 2, "font" to 2, "fx" to 7)
+    private val codeMax = mapOf("theme" to 10, "height" to 3, "numrow" to 2, "shape" to 2, "font" to 2, "fx" to 7, "nyfx" to 5)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -245,6 +247,8 @@ class SettingsActivity : Activity() {
         sw.trackTintList = ColorStateList(states, intArrayOf(pal.action, pal.line))
         sw.setOnCheckedChangeListener { _, c ->
             prefs.edit().putInt(key, if (c) onWhen else 1 - onWhen).apply()
+            // переключатели, меняющие вид клавиатуры, сразу обновляют мини-клавиатуру и настройки
+            if (key in liveKeys) window.decorView.post { render() }
         }
         r.addView(sw)
         r.setOnClickListener { sw.toggle() }
@@ -328,7 +332,13 @@ class SettingsActivity : Activity() {
         row2.addView(k2, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 4f))
         row2.addView(k3, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.8f))
         outer.addView(row2, lp(0, dp(46)))
-        return outer
+        if (!kb.ny) return outer
+        // новогодний режим: гирлянда, снег и всплески и в мини-клавиатуре
+        if (kb.nyGarland) outer.setPadding(outer.paddingLeft, outer.paddingTop + dp(NewYearOverlay.GARLAND_DP), outer.paddingRight, outer.paddingBottom)
+        val host = FrameLayout(this)
+        host.addView(outer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        host.addView(NewYearOverlay(this, kb), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        return host
     }
 
     /** Строка с ползунком. Значение сохраняется, когда отпустишь палец. */
@@ -419,10 +429,7 @@ class SettingsActivity : Activity() {
         nav.orientation = LinearLayout.HORIZONTAL
         nav.gravity = Gravity.CENTER_VERTICAL
         val logo = ImageView(this)
-        try {
-            logo.setImageDrawable(packageManager.getApplicationIcon(packageName))
-        } catch (e: Exception) {
-        }
+        logo.setImageResource(if (prefs.getInt("ny", 1) == 0) R.drawable.ic_logo_ny else R.drawable.ic_logo)
         nav.addView(logo, LinearLayout.LayoutParams(dp(40), dp(40)))
         val brand = tv("Pixel Keys", 20f, pal.text, true)
         brand.setPadding(dp(12), 0, 0, 0)
@@ -435,7 +442,7 @@ class SettingsActivity : Activity() {
         hero.orientation = LinearLayout.VERTICAL
         hero.background = round(pal.action, 28)
         hero.setPadding(dp(22), dp(26), dp(22), dp(22))
-        hero.addView(tv("Клавиатура", 14f, pal.onAction, true))
+        hero.addView(tv(if (prefs.getInt("ny", 1) == 0) "🎄 Новогодняя клавиатура" else "Клавиатура", 14f, pal.onAction, true))
         val h1 = tv("Печатай быстро.\nНикому не доверяй пароли.", 30f, pal.onAction, true)
         h1.setPadding(0, dp(6), 0, dp(10))
         hero.addView(h1)
@@ -448,6 +455,23 @@ class SettingsActivity : Activity() {
         }, lp(10, dp(54)))
         hero.addView(previewCard(), lp(20))
         root.addView(hero, lp(16))
+
+        // --- новый год ---
+        root.addView(section("Новый год 🎄"))
+        val cny = card()
+        cny.addView(switchRow("Новогодний режим", "Мишура, конфетти, снегопад и ёлочные цвета", "ny", 1, 0))
+        if (prefs.getInt("ny", 1) == 0) {
+            cny.addView(divider(), lp(0, dp(1)))
+            cny.addView(switchRow("Гирлянда и мишура", "Светящаяся гирлянда над клавишами", "nygar", 0, 0))
+            cny.addView(divider(), lp(0, dp(1)))
+            cny.addView(switchRow("Снегопад", "Лёгкий снег поверх клавиатуры", "nysnow", 0, 0))
+            cny.addView(divider(), lp(0, dp(1)))
+            cny.addView(switchRow("Ёлочные цвета", "Хвойный зелёный, красный и золото", "nytheme", 0, 0))
+            cny.addView(divider(), lp(0, dp(1)))
+            cny.addView(choiceRow("Эффект при нажатии", "nyfx", listOf("Как в настройках", "Конфетти", "Снежинки", "Салют", "Звёзды", "Мишура"), 1))
+            cny.addView(tv("Эффекты летят по всей клавиатуре. Нажми на клавиши мини-клавиатуры вверху, чтобы посмотреть.", 12f, pal.hint).apply { setPadding(0, dp(4), 0, dp(10)) })
+        }
+        root.addView(cny, lp())
 
         if (prefs.getInt("dev", 0) == 1) addDevSection(root)
 

@@ -141,6 +141,33 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     private val fxSpd = FloatArray(10)
     private val fxRnd = java.util.Random()
     private val hsv = FloatArray(3)
+    private var ov: NewYearOverlay? = null
+
+    private fun findOverlay(): NewYearOverlay? {
+        var p: android.view.ViewParent? = parent
+        while (p != null) {
+            if (p is android.view.ViewGroup) {
+                val o = p.findViewWithTag<View>("nyov")
+                if (o is NewYearOverlay) return o
+            }
+            p = p.parent
+        }
+        return null
+    }
+
+    private fun burstOverlay(x: Float, y: Float) {
+        var o = ov
+        if (o == null || !o.isAttachedToWindow) {
+            o = findOverlay()
+            ov = o
+        }
+        if (o == null) return
+        val a = IntArray(2)
+        val b = IntArray(2)
+        getLocationOnScreen(a)
+        o.getLocationOnScreen(b)
+        o.burst(a[0] - b[0] + x, a[1] - b[1] + y, pal.effect)
+    }
 
     /** Режим разработчика: цвет зависит от положения клавиши, получается радуга по всей клавиатуре. */
     private fun rainbowColor(): Int {
@@ -154,6 +181,10 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
 
     private fun startFx(x: Float, y: Float) {
         if (pal.effect == 0 || kind == FLAT) return
+        if (pal.effect >= 9) {   // новогодние эффекты летят по всей клавиатуре: рисует слой поверх
+            burstOverlay(x, y)
+            return
+        }
         fxX = x
         fxY = y
         for (i in 0 until 10) {
@@ -358,6 +389,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
         morphAnim?.cancel()
         fxAnim?.cancel()
         fxT = 1f
+        ov = null
         hideBubble()
         ui.removeCallbacks(longRun)
         ui.removeCallbacks(repRun)

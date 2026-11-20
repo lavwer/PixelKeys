@@ -23,7 +23,7 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
         fun signature(ctx: Context): String {
             val sp = ctx.getSharedPreferences("ui", Context.MODE_PRIVATE)
             val keys = listOf("theme", "height", "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "bgblur", "bgdim",
-                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "dev", "devrow", "dh", "rainbow", "fxdur", "fxpow", "aggr")
+                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "dev", "devrow", "dh", "rainbow", "fxdur", "fxpow", "aggr", "ny", "nygar", "nysnow", "nyfx", "nytheme")
             return keys.joinToString(",") { sp.getInt(it, -1).toString() } + "," + BgStore.stamp(ctx)
         }
     }
@@ -37,10 +37,17 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
     val vibrate = sp.getInt("vibrate", 0) == 0
     val sound = sp.getInt("sound", 1) == 0
 
+    // ---- новый год ----
+    val ny = sp.getInt("ny", 1) == 0                                  // новогодний режим
+    val nyGarland = ny && sp.getInt("nygar", 0) == 0                  // гирлянда и мишура сверху
+    val nySnow = ny && sp.getInt("nysnow", 0) == 0                    // лёгкий снегопад
+    val nyFx = if (ny) sp.getInt("nyfx", 1).coerceIn(0, 5) else 0     // 0 = как в настройках, 1..5 = новогодние эффекты
+    private val festive = ny && sp.getInt("nytheme", 0) == 0          // ёлочные цвета
+
     // ---- кастом в стиле ма3 ----
     // эффект после нажатия: 0 = нет, 1 = волна, 2 = кольцо, 3 = свечение, 4 = пиксели, 5 = искры
     val dev = sp.getInt("dev", 0) == 1                              // режим разработчика
-    val effect = if (sp.getInt("fxon", 1) != 0) 0 else sp.getInt("fx", 0).coerceIn(0, if (dev) 7 else 4) + 1
+    val effect = if (nyFx > 0) 8 + nyFx else if (sp.getInt("fxon", 1) != 0) 0 else sp.getInt("fx", 0).coerceIn(0, if (dev) 7 else 4) + 1
     val font = sp.getInt("font", 0).coerceIn(0, 2)                 // 0 = обычное, 1 = среднее, 2 = жирное
     val keyShape = sp.getInt("shape", 0).coerceIn(0, 2)            // служебные клавиши: 0 = волнистая, 1 = скруглённая, 2 = капсула
     val morphOn = sp.getInt("morph", 0) == 0                       // клавиша при нажатии становится капсулой
@@ -80,51 +87,52 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
     private fun c(id: Int) = ctx.getColor(id)
     private fun s(hex: String) = Color.parseColor(hex)
     private fun hsv(sat: Float, v: Float) = Color.HSVToColor(floatArrayOf(hue, (sat * satK).coerceIn(0f, 1f), v))
+    private fun f(dark: String, light: String) = Color.parseColor(if (night) dark else light)
 
-    val bg = if (themed) (if (night) hsv(0.45f, 0.16f) else hsv(0.18f, 0.93f))
+    val bg = if (festive) f("#0B2B20", "#F2F8F3") else if (themed) (if (night) hsv(0.45f, 0.16f) else hsv(0.18f, 0.93f))
              else if (dyn) c(if (night) android.R.color.system_neutral1_900 else android.R.color.system_neutral2_50)
              else s(if (night) "#1E2024" else "#E8ECF3")
-    val key = if (themed) (if (night) hsv(0.35f, 0.34f) else hsv(0.05f, 1.0f))
+    val key = if (festive) f("#1E4D3A", "#FFFFFF") else if (themed) (if (night) hsv(0.35f, 0.34f) else hsv(0.05f, 1.0f))
               else if (dyn) c(if (night) android.R.color.system_neutral2_700 else android.R.color.system_neutral1_0)
               else s(if (night) "#3B3E45" else "#FFFFFF")
     val keyA = Color.argb(keyAlpha, Color.red(key), Color.green(key), Color.blue(key))
-    val special = if (themed) (if (night) hsv(0.45f, 0.24f) else hsv(0.25f, 0.86f))
+    val special = if (festive) f("#6E1B2B", "#F8D3D8") else if (themed) (if (night) hsv(0.45f, 0.24f) else hsv(0.25f, 0.86f))
                   else if (dyn) c(if (night) android.R.color.system_accent2_800 else android.R.color.system_accent2_100)
                   else s(if (night) "#2B2D33" else "#D3DAE8")
-    val pressed = if (themed) (if (night) hsv(0.35f, 0.46f) else hsv(0.32f, 0.78f))
+    val pressed = if (festive) f("#2D6B52", "#CBE5D3") else if (themed) (if (night) hsv(0.35f, 0.46f) else hsv(0.32f, 0.78f))
                   else if (dyn) c(if (night) android.R.color.system_neutral2_600 else android.R.color.system_neutral2_300)
                   else s(if (night) "#565A63" else "#C3CCDF")
     // нажатая клавиша: в динамической теме подкрашивается акцентным цветом (как в Gboard на Pixel)
-    val keyDown = if (themed) pressed
+    val keyDown = if (festive) f("#6B5A1E", "#FFE29A") else if (themed) pressed
                   else if (dyn) c(if (night) android.R.color.system_accent1_700 else android.R.color.system_accent1_100)
                   else pressed
-    val text = if (themed) (if (night) hsv(0.08f, 0.95f) else hsv(0.6f, 0.15f))
+    val text = if (festive) f("#F4FAF6", "#15301F") else if (themed) (if (night) hsv(0.08f, 0.95f) else hsv(0.6f, 0.15f))
                else if (dyn) c(if (night) android.R.color.system_neutral1_100 else android.R.color.system_neutral1_900)
                else s(if (night) "#E3E3E8" else "#1B1B1F")
-    val hint = if (themed) (if (night) hsv(0.2f, 0.7f) else hsv(0.3f, 0.45f))
+    val hint = if (festive) f("#9CC9B2", "#4D7A62") else if (themed) (if (night) hsv(0.2f, 0.7f) else hsv(0.3f, 0.45f))
                else if (dyn) c(if (night) android.R.color.system_neutral2_300 else android.R.color.system_neutral2_600)
                else s(if (night) "#9AA0AB" else "#6F7380")
-    val action = if (themed) (if (night) hsv(0.4f, 0.95f) else hsv(0.45f, 0.98f))
+    val action = if (festive) f("#FFC93C", "#C62839") else if (themed) (if (night) hsv(0.4f, 0.95f) else hsv(0.45f, 0.98f))
                  else if (dyn) c(android.R.color.system_accent1_200)
                  else s("#A8C7FA")
-    val onAction = if (themed) (if (night) hsv(0.9f, 0.22f) else hsv(0.8f, 0.25f))
+    val onAction = if (festive) f("#3A2800", "#FFFFFF") else if (themed) (if (night) hsv(0.9f, 0.22f) else hsv(0.8f, 0.25f))
                    else if (dyn) c(android.R.color.system_accent1_900)
                    else s("#062E6F")
-    val accent = if (themed) (if (night) hsv(0.45f, 1.0f) else hsv(0.8f, 0.65f))
+    val accent = if (festive) f("#FFC93C", "#B71C2C") else if (themed) (if (night) hsv(0.45f, 1.0f) else hsv(0.8f, 0.65f))
                  else if (dyn) c(if (night) android.R.color.system_accent1_200 else android.R.color.system_accent1_600)
                  else s(if (night) "#8AB4F8" else "#1A5FC8")
 
     // ---- роли для экрана настроек (Material 3): фон страницы, карточки, тональные элементы, линии ----
-    val surface = if (themed) bg
+    val surface = if (festive) f("#0B2B20", "#F7FBF8") else if (themed) bg
                   else if (dyn) c(if (night) android.R.color.system_neutral1_900 else android.R.color.system_neutral1_10)
                   else bg
-    val container = if (themed) key
+    val container = if (festive) f("#14392B", "#E7F2EA") else if (themed) key
                     else if (dyn) c(if (night) android.R.color.system_neutral1_800 else android.R.color.system_neutral2_50)
                     else key
-    val tonal = if (themed) special
+    val tonal = if (festive) f("#6E1B2B", "#FBD9DD") else if (themed) special
                 else if (dyn) c(if (night) android.R.color.system_accent2_700 else android.R.color.system_accent2_100)
                 else special
-    val line = if (themed) special
+    val line = if (festive) f("#2E5A47", "#C9DDD0") else if (themed) special
                else if (dyn) c(if (night) android.R.color.system_neutral2_700 else android.R.color.system_neutral2_200)
                else special
 }

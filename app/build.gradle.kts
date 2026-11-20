@@ -20,8 +20,8 @@ android {
         applicationId = "com.pixelkeys.keyboard"
         minSdk = 29
         targetSdk = 34
-        versionCode = 14
-        versionName = "3.3"
+        versionCode = 15
+        versionName = "3.4"
     }
 
     compileOptions {
