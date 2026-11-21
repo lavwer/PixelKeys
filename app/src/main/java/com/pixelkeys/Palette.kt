@@ -23,7 +23,7 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
         fun signature(ctx: Context): String {
             val sp = ctx.getSharedPreferences("ui", Context.MODE_PRIVATE)
             val keys = listOf("theme", "height", "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "bgblur", "bgdim",
-                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "dev", "devrow", "dh", "rainbow", "fxdur", "fxpow", "aggr", "ny", "nygar", "nysnow", "nyfx", "nytheme")
+                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "dev", "devrow", "dh", "rainbow", "fxdur", "fxpow", "aggr", "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind")
             return keys.joinToString(",") { sp.getInt(it, -1).toString() } + "," + BgStore.stamp(ctx)
         }
     }
@@ -40,9 +40,16 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
     // ---- новый год ----
     val ny = sp.getInt("ny", 1) == 0                                  // новогодний режим
     val nyGarland = ny && sp.getInt("nygar", 0) == 0                  // гирлянда и мишура сверху
+    val nyEdge = ny && sp.getInt("nyedge", 0) == 0                    // гирлянды по краям экрана
     val nySnow = ny && sp.getInt("nysnow", 0) == 0                    // лёгкий снегопад
     val nyFx = if (ny) sp.getInt("nyfx", 1).coerceIn(0, 5) else 0     // 0 = как в настройках, 1..5 = новогодние эффекты
     private val festive = ny && sp.getInt("nytheme", 0) == 0          // ёлочные цвета
+
+    // ---- посыпки: 0 = выкл, 1 = снег, 2 = листья, 3 = вода, 4 = весна ----
+    val fall = sp.getInt("fall", 0).coerceIn(0, 4)
+    val fallAmt = sp.getInt("fallamt", 50).coerceIn(10, 100)
+    val fallSpd = sp.getInt("fallspd", 100).coerceIn(20, 200)
+    val fallWind = sp.getInt("fallwind", 0).coerceIn(-100, 100)
 
     // ---- кастом в стиле ма3 ----
     // эффект после нажатия: 0 = нет, 1 = волна, 2 = кольцо, 3 = свечение, 4 = пиксели, 5 = искры

@@ -50,8 +50,10 @@ class SettingsActivity : Activity() {
     private var controlsView: View? = null
     private var practice: PracticePage? = null
     private var practiceView: View? = null
+    private var fallView: View? = null
+    private var fallDirty = false
 
-    private val liveKeys = setOf("fxon", "morph", "hints", "bubble", "rainbow", "devrow", "ny", "nygar", "nysnow", "nytheme")
+    private val liveKeys = setOf("fxon", "morph", "hints", "bubble", "rainbow", "devrow", "ny", "nygar", "nyedge", "nysnow", "nytheme")
     private var greetTaps = 0
     private var greetLast = 0L
 
@@ -59,9 +61,9 @@ class SettingsActivity : Activity() {
         "theme", "height", "punct", "t9", "autocorr", "autoany", "numrow", "minimal",
         "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "fxon", "fx", "font", "shape", "morph", "hints",
         "bubble", "bpad", "hpad", "hue", "sat", "dh", "devrow", "rainbow", "fxdur", "fxpow", "aggr",
-        "ny", "nygar", "nysnow", "nyfx", "nytheme"
+        "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind"
     )
-    private val codeMax = mapOf("theme" to 10, "height" to 3, "numrow" to 2, "shape" to 2, "font" to 2, "fx" to 7, "nyfx" to 5)
+    private val codeMax = mapOf("theme" to 10, "height" to 3, "numrow" to 2, "shape" to 2, "font" to 2, "fx" to 7, "nyfx" to 5, "fall" to 4)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -332,12 +334,17 @@ class SettingsActivity : Activity() {
         row2.addView(k2, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 4f))
         row2.addView(k3, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1.8f))
         outer.addView(row2, lp(0, dp(46)))
-        if (!kb.ny) return outer
+        if (!kb.ny && kb.fall == 0) return outer
         // новогодний режим: гирлянда, снег и всплески и в мини-клавиатуре
-        if (kb.nyGarland) outer.setPadding(outer.paddingLeft, outer.paddingTop + dp(NewYearOverlay.GARLAND_DP), outer.paddingRight, outer.paddingBottom)
+        if (kb.ny && kb.nyGarland) outer.setPadding(outer.paddingLeft, outer.paddingTop + dp(NewYearOverlay.GARLAND_DP), outer.paddingRight, outer.paddingBottom)
         val host = FrameLayout(this)
         host.addView(outer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
-        host.addView(NewYearOverlay(this, kb), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        if (kb.fall != 0) {
+            val fo = FallOverlay(this, kb.night)
+            fo.configure(kb.fall, kb.fallAmt, kb.fallSpd, kb.fallWind)
+            host.addView(fo, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        }
+        if (kb.ny) host.addView(NewYearOverlay(this, kb), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         return host
     }
 
@@ -463,6 +470,8 @@ class SettingsActivity : Activity() {
         if (prefs.getInt("ny", 1) == 0) {
             cny.addView(divider(), lp(0, dp(1)))
             cny.addView(switchRow("Гирлянда и мишура", "Светящаяся гирлянда над клавишами", "nygar", 0, 0))
+            cny.addView(divider(), lp(0, dp(1)))
+            cny.addView(switchRow("Гирлянды по краям", "Мишура, шарики и огоньки вдоль краёв экрана", "nyedge", 0, 0))
             cny.addView(divider(), lp(0, dp(1)))
             cny.addView(switchRow("Снегопад", "Лёгкий снег поверх клавиатуры", "nysnow", 0, 0))
             cny.addView(divider(), lp(0, dp(1)))
@@ -824,6 +833,7 @@ class SettingsActivity : Activity() {
         practice?.stop()
         practice = null          // перекрасится при открытии: цвета темы могли поменяться
         practiceView = null
+        fallView = null
         controlsView = controls
         val host = FrameLayout(this)
         host.setBackgroundColor(pal.surface)
@@ -834,6 +844,10 @@ class SettingsActivity : Activity() {
         ip.bottomMargin = dp(16)
         host.addView(isl, ip)
         island = isl
+        // новогодний слой на весь экран: гирлянды по краям и снег; касания проходят сквозь него
+        if (pal.ny && (pal.nyEdge || pal.nySnow)) {
+            host.addView(NewYearOverlay(this, pal, pal.nyEdge, pal.nyEdge, 26, true), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        }
         // когда открыта клавиатура, островок прячем, чтобы не закрывал поле ввода
         host.viewTreeObserver.addOnGlobalLayoutListener {
             val r = Rect()
@@ -847,21 +861,34 @@ class SettingsActivity : Activity() {
     }
 
     private fun showPage(p: Int) {
+        // вернулись в «Управление» после смены посыпок: пересобираем экран, чтобы мини-клавиатура обновилась
+        if (p == 0 && fallDirty) {
+            fallDirty = false
+            page = 0
+            render()
+            return
+        }
         if (page == 1 && p != 1) practice?.stop()
         page = p
         holder.removeAllViews()
         if (p == 0) {
             holder.addView(controlsView)
-        } else {
+        } else if (p == 1) {
             if (practiceView == null) {
                 val pg = PracticePage(this, pal, prefs)
                 practice = pg
                 practiceView = pg.view()
             }
             holder.addView(practiceView)
+        } else {
+            if (fallView == null) fallView = FallPage(this, pal, prefs) { fallDirty = true }.view()
+            holder.addView(fallView)
         }
         updateIsland()
     }
+
+    private val islandIcons = listOf("⚙️", "🎮", "✨")
+    private val islandLabels = listOf("Управление", "Практика", "Посыпки")
 
     private fun buildIsland(): View {
         val box = LinearLayout(this)
@@ -871,12 +898,9 @@ class SettingsActivity : Activity() {
         box.background = round(pal.container, 32)
         box.elevation = dp(8).toFloat()
         islandItems.clear()
-        val names = listOf("⚙️  Управление", "🎮  Практика")
-        for (i in names.indices) {
-            val t = tv(names[i], 15f, pal.text, true)
+        for (i in islandIcons.indices) {
+            val t = tv(islandIcons[i], 16f, pal.text, true)
             t.gravity = Gravity.CENTER
-            t.minWidth = dp(128)
-            t.setPadding(dp(20), 0, dp(20), 0)
             t.setOnClickListener { showPage(i) }
             ripple(t, 26)
             box.addView(t, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(52)))
@@ -885,13 +909,20 @@ class SettingsActivity : Activity() {
         return box
     }
 
+    /** Выбранная вкладка показывает значок и подпись, остальные только значок. */
     private fun updateIsland() {
         for (i in islandItems.indices) {
             val t = islandItems[i]
             if (i == page) {
+                t.text = islandIcons[i] + "  " + islandLabels[i]
+                t.minWidth = dp(120)
+                t.setPadding(dp(20), 0, dp(20), 0)
                 t.background = round(pal.tonal, 26)
                 t.setTextColor(pal.text)
             } else {
+                t.text = islandIcons[i]
+                t.minWidth = dp(56)
+                t.setPadding(dp(14), 0, dp(14), 0)
                 t.background = null
                 t.setTextColor(pal.hint)
             }

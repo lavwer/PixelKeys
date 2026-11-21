@@ -13,11 +13,18 @@ import android.view.View
  * и всплески при нажатии (конфетти, снежинки, салют, звёзды, мишура).
  * Сам слой не принимает касания: они проходят к клавишам под ним.
  */
-class NewYearOverlay(ctx: Context, private val pal: Palette) : View(ctx) {
+class NewYearOverlay(
+    ctx: Context,
+    private val pal: Palette,
+    private val showTop: Boolean = pal.nyGarland,    // гирлянда сверху
+    private val showSides: Boolean = false,          // гирлянды по краям
+    private val snowN: Int = 22,                 // сколько снежинок плавает
+    screen: Boolean = false                      // слой на весь экран приложения (без всплесков от клавиш)
+) : View(ctx) {
 
     companion object {
         /** Высота полосы гирлянды в dp: на столько клавиатура становится выше. */
-        const val GARLAND_DP = 20
+        const val GARLAND_DP = 26
     }
 
     private class P {
@@ -43,7 +50,6 @@ class NewYearOverlay(ctx: Context, private val pal: Palette) : View(ctx) {
     private val snow = ArrayList<P>()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
-    private var tinsel: Bitmap? = null
     private var attached = false
     private var loopOn = false
     private var last = 0L
@@ -63,59 +69,77 @@ class NewYearOverlay(ctx: Context, private val pal: Palette) : View(ctx) {
     )
 
     init {
-        tag = "nyov"
+        tag = if (screen) "nyscreen" else "nyov"
+    }
+
+    /**
+     * Слой не должен влиять на размер окна: по высоте он занимает место только тогда, когда
+     * родитель задал её точно (то есть равна высоте клавиатуры), иначе FrameLayout раздуется
+     * на весь экран и снег посыплется поверх приложения.
+     */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        val h = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) MeasureSpec.getSize(heightMeasureSpec) else 0
+        setMeasuredDimension(w, h)
     }
 
     // ---- гирлянда ----
     private fun wireY(x: Float): Float {
         val frac = (x % segPx) / segPx
-        return 2f * d + 9f * d * Math.sin(Math.PI * frac).toFloat()
+        return 5f * d + 11f * d * Math.sin(Math.PI * frac).toFloat()
     }
 
-    private fun buildTinsel(w: Int): Bitmap {
-        val hpx = (GARLAND_DP * d).toInt() + 2
-        val bmp = Bitmap.createBitmap(w, hpx, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
-        val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        p.strokeCap = Paint.Cap.ROUND
-        // проволока
-        p.style = Paint.Style.STROKE
-        p.strokeWidth = 2f * d
-        p.color = 0xFF1B5E20.toInt()
-        path.reset()
-        path.moveTo(0f, wireY(0f))
-        var x = 0f
-        while (x <= w) {
-            x += 3f
-            path.lineTo(x, wireY(x))
+    private class Art(val art: StrandArt, val left: Float, val top: Float)
+    private val arts = ArrayList<Art>()
+
+    private fun rebuildArts(w: Int, h: Int) {
+        arts.clear()
+        if (w <= 0 || h <= 0) return
+        val topH = (GARLAND_DP * d).toInt()
+        if (showTop) arts.add(Art(buildTop(w, topH), 0f, 0f))
+        if (showSides) {
+            val y0 = if (showTop) topH else 0
+            val sw = (24f * d).toInt()
+            val sh = h - y0
+            if (sh > (60f * d).toInt()) {
+                arts.add(Art(buildSide(sw, sh, false), 0f, y0.toFloat()))
+                arts.add(Art(buildSide(sw, sh, true), (w - sw).toFloat(), y0.toFloat()))
+            }
         }
-        c.drawPath(path, p)
-        // ворсинки мишуры
-        p.strokeWidth = 1.4f * d
-        var i = 0
-        x = 0f
-        while (x <= w) {
-            val y = wireY(x)
-            val ang = ((i * 53) % 90 - 45) * 0.0174533f
-            val len = (3.5f + ((i * 37) % 30) / 10f) * d
-            val side = if (i % 2 == 0) 1f else -1f
-            p.color = tinselColors[i % tinselColors.size]
-            c.drawLine(
-                x, y,
-                x + Math.sin(ang.toDouble()).toFloat() * len,
-                y + side * Math.cos(ang.toDouble()).toFloat() * len,
-                p
-            )
-            x += 2.4f * d
-            i++
+    }
+
+    /** Верхняя гирлянда: провисающие дуги вдоль всей ширины. */
+    private fun buildTop(w: Int, hpx: Int): StrandArt {
+        val n = w / 3 + 2
+        val pts = FloatArray(n * 2)
+        for (i in 0 until n) {
+            val x = minOf(w.toFloat(), i * 3f)
+            pts[2 * i] = x
+            pts[2 * i + 1] = wireY(x)
         }
-        return bmp
+        return Tinsel.build(w, hpx, pts, d, 1, 0f, 5f * d, false)
+    }
+
+    /** Боковая гирлянда: волнистая нить вдоль края, лампочки и шарики свисают внутрь. */
+    private fun buildSide(sw: Int, hpx: Int, right: Boolean): StrandArt {
+        val n = hpx / 3 + 2
+        val pts = FloatArray(n * 2)
+        val seg = 140f * d
+        for (i in 0 until n) {
+            val y = minOf(hpx.toFloat(), i * 3f)
+            val frac = (y % seg) / seg
+            val x = 3f * d + 6f * d * Math.sin(Math.PI * frac).toFloat()
+            pts[2 * i] = if (right) sw - x else x
+            pts[2 * i + 1] = y
+        }
+        val hang = if (right) -5f * d else 5f * d
+        return Tinsel.build(sw, hpx, pts, d, if (right) 3 else 2, hang, 0f, true)
     }
 
     private fun initSnow(w: Int, h: Int) {
         snow.clear()
-        if (!pal.nySnow || w <= 0 || h <= 0) return
-        for (i in 0 until 22) {
+        if (!pal.nySnow || snowN <= 0 || w <= 0 || h <= 0) return
+        for (i in 0 until snowN) {
             val p = P()
             p.x = rnd.nextFloat() * w
             p.y = rnd.nextFloat() * h
@@ -130,7 +154,7 @@ class NewYearOverlay(ctx: Context, private val pal: Palette) : View(ctx) {
         super.onSizeChanged(w, h, ow, oh)
         val scallops = maxOf(2, Math.round(w / (130f * d)))
         segPx = w / scallops.toFloat()
-        tinsel = if (pal.nyGarland && w > 0) buildTinsel(w) else null
+        rebuildArts(w, h)
         initSnow(w, h)
         ensureLoop()
     }
@@ -268,7 +292,7 @@ class NewYearOverlay(ctx: Context, private val pal: Palette) : View(ctx) {
             val fast = ps.isNotEmpty() || snow.isNotEmpty()
             if (fast) {
                 postOnAnimation(this)
-            } else if (tinsel != null) {
+            } else if (arts.isNotEmpty()) {
                 postDelayed(this, 125L)
             } else {
                 loopOn = false
@@ -305,33 +329,59 @@ class NewYearOverlay(ctx: Context, private val pal: Palette) : View(ctx) {
             paint.alpha = 190
             for (p in snow) c.drawCircle(p.x, p.y, p.size, paint)
         }
-        drawGarland(c)
+        drawGarlands(c)
         for (p in ps) drawParticle(c, p)
     }
 
-    private fun drawGarland(c: Canvas) {
-        val bmp = tinsel ?: return
-        c.drawBitmap(bmp, 0f, 0f, null)
-        paint.style = Paint.Style.FILL
-        val step = 26f * d
-        var x = step / 2f
+    private fun drawGarlands(c: Canvas) {
         var k = 0
-        while (x < width) {
-            val y = wireY(x) + 4.5f * d
-            val tw = 0.55f + 0.45f * Math.sin((timeS * 3.2f + k * 1.7f).toDouble()).toFloat()
-            val col = bulbColors[k % bulbColors.size]
-            paint.color = 0xFF263238.toInt()
-            paint.alpha = 255
-            c.drawRect(x - 1.5f * d, y - 4.5f * d, x + 1.5f * d, y - 2.5f * d, paint)
-            paint.color = col
-            paint.alpha = (70 * tw).toInt()
-            c.drawCircle(x, y, 6.5f * d, paint)
-            paint.color = col
-            paint.alpha = (150 + 105 * tw).toInt()
-            c.drawCircle(x, y, 3.2f * d, paint)
-            x += step
-            k++
+        for (art in arts) {
+            c.drawBitmap(art.art.bmp, art.left, art.top, null)
+            paint.style = Paint.Style.FILL
+            val bl = art.art.bulbs
+            var i = 0
+            while (i + 1 < bl.size) {
+                val x = art.left + bl[i]
+                val y = art.top + bl[i + 1]
+                val tw = 0.55f + 0.45f * Math.sin((timeS * 3.2f + k * 1.7f).toDouble()).toFloat()
+                val col = bulbColors[k % bulbColors.size]
+                paint.color = col
+                paint.alpha = (70 * tw).toInt()
+                c.drawCircle(x, y, 6.5f * d, paint)
+                paint.color = col
+                paint.alpha = (150 + 105 * tw).toInt()
+                c.drawCircle(x, y, 3.2f * d, paint)
+                paint.color = 0xFFFFFFFF.toInt()
+                paint.alpha = (140 * tw).toInt()
+                c.drawCircle(x - 0.9f * d, y - 0.9f * d, 1.0f * d, paint)
+                i += 2
+                k++
+            }
+            // блики на мишуре
+            val gl = art.art.glints
+            var j = 0
+            var g = 0
+            while (j + 1 < gl.size) {
+                val ph = Math.sin((timeS * 4.1f + g * 2.3f).toDouble()).toFloat()
+                if (ph > 0.2f) drawGlint(c, art.left + gl[j], art.top + gl[j + 1], (1.6f + 2.2f * ph) * d, (255 * ph).toInt())
+                j += 2
+                g++
+            }
         }
+    }
+
+    private fun drawGlint(c: Canvas, x: Float, y: Float, r: Float, alpha: Int) {
+        paint.style = Paint.Style.FILL
+        paint.color = 0xFFFFFFFF.toInt()
+        paint.alpha = alpha
+        path.reset()
+        path.moveTo(x, y - r)
+        path.quadTo(x, y, x + r, y)
+        path.quadTo(x, y, x, y + r)
+        path.quadTo(x, y, x - r, y)
+        path.quadTo(x, y, x, y - r)
+        path.close()
+        c.drawPath(path, paint)
     }
 
     private fun drawParticle(c: Canvas, p: P) {

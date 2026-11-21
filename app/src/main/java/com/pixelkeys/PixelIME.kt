@@ -264,7 +264,8 @@ class PixelIME : InputMethodService() {
             root.setBackgroundColor(pal.bg)
             navColor = pal.bg
         }
-        root.setPadding(dp(pal.hpadDp), dp(4 + (if (pal.nyGarland) NewYearOverlay.GARLAND_DP else 0)), dp(pal.hpadDp), dp(pal.bpadDp))
+        val edgePad = if (pal.nyEdge) 12 else 0   // место под гирлянды по бокам
+        root.setPadding(dp(pal.hpadDp + edgePad), dp(4 + (if (pal.nyGarland) NewYearOverlay.GARLAND_DP else 0)), dp(pal.hpadDp + edgePad), dp(pal.bpadDp))
 
         // верхняя панель: буфер, эмодзи, капсула с T9, запуск приложения
         val bar = LinearLayout(this)
@@ -395,11 +396,16 @@ class PixelIME : InputMethodService() {
         root.addView(bar, LinearLayout.LayoutParams(MATCH, barH()))
         root.addView(content, LinearLayout.LayoutParams(MATCH, rowH() * 5))
         renderKeys()
-        if (!pal.ny) return root
-        // новогодний режим: поверх клавиатуры лежит слой с гирляндой, снегом и всплесками
+        if (!pal.ny && pal.fall == 0) return root
+        // поверх клавиатуры лежат слои: посыпки (падает сверху) и новогодний (гирлянды, всплески)
         val host = FrameLayout(this)
         host.addView(root, FrameLayout.LayoutParams(MATCH, FrameLayout.LayoutParams.WRAP_CONTENT))
-        host.addView(NewYearOverlay(this, pal), FrameLayout.LayoutParams(MATCH, MATCH))
+        if (pal.fall != 0) {
+            val fo = FallOverlay(this, pal.night)
+            fo.configure(pal.fall, pal.fallAmt, pal.fallSpd, pal.fallWind)
+            host.addView(fo, FrameLayout.LayoutParams(MATCH, MATCH))
+        }
+        if (pal.ny) host.addView(NewYearOverlay(this, pal, pal.nyGarland, pal.nyEdge), FrameLayout.LayoutParams(MATCH, MATCH))
         return host
     }
 
