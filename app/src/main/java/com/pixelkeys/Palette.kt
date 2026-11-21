@@ -23,7 +23,7 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
         fun signature(ctx: Context): String {
             val sp = ctx.getSharedPreferences("ui", Context.MODE_PRIVATE)
             val keys = listOf("theme", "height", "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "bgblur", "bgdim",
-                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "dev", "devrow", "dh", "rainbow", "fxdur", "fxpow", "aggr", "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind")
+                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "dev", "devrow", "dh", "rainbow", "fxdur", "fxpow", "aggr", "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind", "sugstyle")
             return keys.joinToString(",") { sp.getInt(it, -1).toString() } + "," + BgStore.stamp(ctx)
         }
     }
@@ -44,6 +44,9 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
     val nySnow = ny && sp.getInt("nysnow", 0) == 0                    // лёгкий снегопад
     val nyFx = if (ny) sp.getInt("nyfx", 1).coerceIn(0, 5) else 0     // 0 = как в настройках, 1..5 = новогодние эффекты
     private val festive = ny && sp.getInt("nytheme", 0) == 0          // ёлочные цвета
+
+    // ---- панель подсказок: 0 = капсула, 1 = чипы в стиле ма3 ----
+    val sugStyle = sp.getInt("sugstyle", 0).coerceIn(0, 1)
 
     // ---- посыпки: 0 = выкл, 1 = снег, 2 = листья, 3 = вода, 4 = весна ----
     val fall = sp.getInt("fall", 0).coerceIn(0, 4)

@@ -140,7 +140,8 @@ class PracticePage(
     private fun card(): LinearLayout {
         val c = LinearLayout(act)
         c.orientation = LinearLayout.VERTICAL
-        c.background = round(pal.container, 28)
+        c.background = Ui.raised(act, pal.container, pal.night, 28)
+        c.elevation = dp(2).toFloat()
         c.setPadding(dp(18), dp(8), dp(18), dp(8))
         return c
     }
@@ -156,10 +157,12 @@ class PracticePage(
     private fun pillBtn(text: String, filled: Boolean, onClick: () -> Unit): TextView {
         val t = tv(text, 16f, if (filled) pal.onAction else pal.text, true)
         t.gravity = Gravity.CENTER
-        t.background = round(if (filled) pal.action else pal.tonal, 26)
-        t.setPadding(dp(16), 0, dp(16), 0)
+        t.background = Ui.key3d(act, if (filled) pal.action else pal.tonal, pal.night, 26)
+        t.setPadding(dp(16), 0, dp(16), dp(3))
+        t.elevation = dp(3).toFloat()
         t.setOnClickListener { onClick() }
         ripple(t, 26)
+        Ui.pressable(t)
         return t
     }
 
@@ -168,7 +171,8 @@ class PracticePage(
         b.orientation = LinearLayout.VERTICAL
         b.gravity = Gravity.CENTER
         b.setPadding(dp(8), dp(10), dp(8), dp(10))
-        b.background = round(pal.tonal, 18)
+        b.background = Ui.raised(act, pal.tonal, pal.night, 18)
+        b.elevation = dp(1).toFloat()
         l.gravity = Gravity.CENTER
         v.gravity = Gravity.CENTER
         b.addView(l)
@@ -251,7 +255,7 @@ class PracticePage(
         input.setHintTextColor(pal.hint)
         input.setTextColor(pal.text)
         input.textSize = 18f
-        input.background = round(pal.surface, 20)
+        input.background = Ui.inset(act, pal.surface, pal.night, 20)
         input.setPadding(dp(18), dp(14), dp(18), dp(14))
         input.addTextChangedListener(watcher)
         c.addView(input, lp(4, dp(56)))
@@ -595,12 +599,14 @@ class PracticePage(
         for (i in modeBtns.indices) {
             val sel = i == mode
             modeBtns[i].text = (if (sel) "✓ " else "") + modeNames[i]
-            modeBtns[i].background = round(if (sel) pal.tonal else pal.container, 22)
+            modeBtns[i].background = if (sel) Ui.raised(act, pal.tonal, pal.night, 22) else round(pal.container, 22)
+            modeBtns[i].elevation = if (sel) dp(3).toFloat() else 0f
         }
         for (i in langBtns.indices) {
             val sel = i == lang
             langBtns[i].text = (if (sel) "✓ " else "") + langNames[i]
-            langBtns[i].background = round(if (sel) pal.tonal else pal.container, 19)
+            langBtns[i].background = if (sel) Ui.raised(act, pal.tonal, pal.night, 19) else round(pal.container, 19)
+            langBtns[i].elevation = if (sel) dp(3).toFloat() else 0f
         }
     }
 

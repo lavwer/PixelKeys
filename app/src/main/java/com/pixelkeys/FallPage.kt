@@ -96,8 +96,12 @@ class FallPage(
                 for (i in 0 until n) {
                     val x = gap + shift + i * (kw + gap)
                     val y = top + r * (kh + gap)
-                    rect.set(x, y, x + kw, y + kh)
+                    // нижний бортик клавиши придаёт объём
+                    p.color = Ui.mix(pal.key, Color.BLACK, 0.3f)
+                    rect.set(x, y + 2f * d, x + kw, y + kh + 2f * d)
+                    c.drawRoundRect(rect, 7f * d, 7f * d, p)
                     p.color = pal.key
+                    rect.set(x, y, x + kw, y + kh)
                     c.drawRoundRect(rect, 7f * d, 7f * d, p)
                 }
             }
@@ -119,7 +123,8 @@ class FallPage(
 
         // живое превью
         val box = FrameLayout(act)
-        box.background = round(pal.bg, 28)
+        box.background = Ui.raised(act, pal.bg, pal.night, 28)
+        box.elevation = dp(4).toFloat()
         box.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(v: View, o: Outline) {
                 o.setRoundRect(0, 0, v.width, v.height, dp(28).toFloat())
@@ -183,7 +188,8 @@ class FallPage(
         root.addView(st)
         val c = LinearLayout(act)
         c.orientation = LinearLayout.VERTICAL
-        c.background = round(pal.container, 28)
+        c.background = Ui.raised(act, pal.container, pal.night, 28)
+        c.elevation = dp(2).toFloat()
         c.setPadding(dp(18), dp(8), dp(18), dp(8))
         c.addView(slider("Количество", "fallamt", 10, 100, 50, "%"))
         c.addView(divider(), lp(0, dp(1)))
@@ -254,11 +260,13 @@ class FallPage(
     private fun updateSelection() {
         for (i in cards.indices) {
             val sel = (i + 1) == cur
-            cards[i].background = round(if (sel) pal.tonal else pal.container, 24)
+            cards[i].background = Ui.raised(act, if (sel) pal.tonal else pal.container, pal.night, 24)
+            cards[i].elevation = if (sel) dp(6).toFloat() else dp(2).toFloat()
         }
         offBtn.text = if (cur == 0) "Посыпки выключены" else "Выключить посыпки"
         offBtn.setTextColor(pal.text)
-        offBtn.background = round(if (cur == 0) pal.container else pal.tonal, 26)
+        offBtn.background = Ui.raised(act, if (cur == 0) pal.container else pal.tonal, pal.night, 26)
+        offBtn.elevation = dp(2).toFloat()
         empty.visibility = if (cur == 0) View.VISIBLE else View.GONE
     }
 

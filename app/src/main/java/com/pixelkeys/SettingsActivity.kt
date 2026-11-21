@@ -51,6 +51,7 @@ class SettingsActivity : Activity() {
     private var practice: PracticePage? = null
     private var practiceView: View? = null
     private var fallView: View? = null
+    private var presetsView: View? = null
     private var fallDirty = false
 
     private val liveKeys = setOf("fxon", "morph", "hints", "bubble", "rainbow", "devrow", "ny", "nygar", "nyedge", "nysnow", "nytheme")
@@ -61,9 +62,9 @@ class SettingsActivity : Activity() {
         "theme", "height", "punct", "t9", "autocorr", "autoany", "numrow", "minimal",
         "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "fxon", "fx", "font", "shape", "morph", "hints",
         "bubble", "bpad", "hpad", "hue", "sat", "dh", "devrow", "rainbow", "fxdur", "fxpow", "aggr",
-        "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind"
+        "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind", "sugstyle"
     )
-    private val codeMax = mapOf("theme" to 10, "height" to 3, "numrow" to 2, "shape" to 2, "font" to 2, "fx" to 7, "nyfx" to 5, "fall" to 4)
+    private val codeMax = mapOf("theme" to 10, "height" to 3, "numrow" to 2, "shape" to 2, "font" to 2, "fx" to 7, "nyfx" to 5, "fall" to 4, "sugstyle" to 1)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,7 +105,8 @@ class SettingsActivity : Activity() {
     private fun card(): LinearLayout {
         val c = LinearLayout(this)
         c.orientation = LinearLayout.VERTICAL
-        c.background = round(pal.container, 28)
+        c.background = Ui.raised(this, pal.container, pal.night, 28)
+        c.elevation = dp(2).toFloat()
         c.setPadding(dp(18), dp(8), dp(18), dp(8))
         return c
     }
@@ -126,10 +128,12 @@ class SettingsActivity : Activity() {
     private fun pill(text: String, filled: Boolean, onClick: () -> Unit): TextView {
         val t = tv(text, 16f, if (filled) pal.onAction else pal.text, true)
         t.gravity = Gravity.CENTER
-        t.background = round(if (filled) pal.action else pal.tonal, 26)
-        t.setPadding(dp(16), 0, dp(16), 0)
+        t.background = Ui.key3d(this, if (filled) pal.action else pal.tonal, pal.night, 26)
+        t.setPadding(dp(16), 0, dp(16), dp(3))
+        t.elevation = dp(3).toFloat()
         t.setOnClickListener { onClick() }
         ripple(t, 26)
+        Ui.pressable(t)
         return t
     }
 
@@ -151,16 +155,24 @@ class SettingsActivity : Activity() {
     private fun heroButton(text: String, primary: Boolean, onClick: () -> Unit): TextView {
         val t = tv(text, 16f, if (primary) pal.action else pal.onAction, true)
         t.gravity = Gravity.CENTER
-        t.background = round(if (primary) pal.onAction else ((pal.onAction and 0x00FFFFFF) or (0x26 shl 24)), 28)
-        t.setPadding(dp(16), 0, dp(16), 0)
+        if (primary) {
+            t.background = Ui.key3d(this, pal.onAction, pal.night, 28)
+            t.setPadding(dp(16), 0, dp(16), dp(3))
+            t.elevation = dp(3).toFloat()
+        } else {
+            t.background = round((pal.onAction and 0x00FFFFFF) or (0x26 shl 24), 28)
+            t.setPadding(dp(16), 0, dp(16), 0)
+        }
         t.setOnClickListener { onClick() }
         ripple(t, 28)
+        Ui.pressable(t)
         return t
     }
 
     private fun chip(text: String): TextView {
         val t = tv(text, 12f, pal.text, true)
-        t.background = round(pal.tonal, 14)
+        t.background = Ui.raised(this, pal.tonal, pal.night, 14)
+        t.elevation = dp(1).toFloat()
         t.setPadding(dp(12), dp(5), dp(12), dp(5))
         return t
     }
@@ -168,11 +180,13 @@ class SettingsActivity : Activity() {
     private fun featureCard(emoji: String, title: String, desc: String): View {
         val c = LinearLayout(this)
         c.orientation = LinearLayout.VERTICAL
-        c.background = round(pal.container, 26)
+        c.background = Ui.raised(this, pal.container, pal.night, 26)
+        c.elevation = dp(2).toFloat()
         c.setPadding(dp(16), dp(16), dp(16), dp(18))
         val badge = tv(emoji, 22f, pal.text)
         badge.gravity = Gravity.CENTER
-        badge.background = round(pal.tonal, 16)
+        badge.background = Ui.raised(this, pal.tonal, pal.night, 16)
+        badge.elevation = dp(2).toFloat()
         c.addView(badge, LinearLayout.LayoutParams(dp(46), dp(46)))
         val t = tv(title, 16f, pal.text, true)
         t.setPadding(0, dp(12), 0, dp(4))
@@ -285,21 +299,32 @@ class SettingsActivity : Activity() {
             outer.background = CropDrawable(photo)
             roundClip(outer, 28)
         } else {
-            val bg = round(kb.bg, 28)
-            bg.setStroke(dp(2), kb.pressed)
-            outer.background = bg
+            outer.background = Ui.raised(this, kb.bg, kb.night, 28)
+            outer.elevation = dp(4).toFloat()
         }
         outer.setPadding(dp(8), dp(10), dp(8), dp(10))
 
         val cap = LinearLayout(this)
         cap.orientation = LinearLayout.HORIZONTAL
         cap.gravity = Gravity.CENTER
-        cap.background = round(kb.keyA, 20)
-        for (w in listOf("привет", "прикольно", "приятно")) {
-            val t = tv(w, 14f, kb.text)
+        val m3 = kb.sugStyle == 1
+        if (!m3) cap.background = round(kb.keyA, 20)
+        val sugWords = listOf("привет", "прикольно", "приятно")
+        for (i in sugWords.indices) {
+            val t = tv(sugWords[i], 14f, kb.text)
             t.gravity = Gravity.CENTER
             t.maxLines = 1
-            cap.addView(t, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+            if (m3) {
+                val g = round(if (i == 0) kb.tonal else Color.TRANSPARENT, 15)
+                if (i != 0) g.setStroke(dp(1), kb.line)
+                t.background = g
+                if (i == 0) t.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                val cl = LinearLayout.LayoutParams(0, dp(30), 1f)
+                cl.setMargins(dp(3), 0, dp(3), 0)
+                cap.addView(t, cl)
+            } else {
+                cap.addView(t, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+            }
         }
         val capLp = lp(0, dp(34))
         capLp.setMargins(dp(4), 0, dp(4), dp(4))
@@ -447,7 +472,9 @@ class SettingsActivity : Activity() {
         // --- главный блок (hero) ---
         val hero = LinearLayout(this)
         hero.orientation = LinearLayout.VERTICAL
-        hero.background = round(pal.action, 28)
+        hero.background = Ui.glossy(this, pal.action, pal.night, 28)
+        hero.elevation = dp(8).toFloat()
+        Ui.tint(hero, pal.action)
         hero.setPadding(dp(22), dp(26), dp(22), dp(22))
         hero.addView(tv(if (prefs.getInt("ny", 1) == 0) "🎄 Новогодняя клавиатура" else "Клавиатура", 14f, pal.onAction, true))
         val h1 = tv("Печатай быстро.\nНикому не доверяй пароли.", 30f, pal.onAction, true)
@@ -571,6 +598,8 @@ class SettingsActivity : Activity() {
         // --- кастом в стиле ма3 ---
         root.addView(section("Стиль Material 3"))
         val cm3 = card()
+        cm3.addView(choiceRow("Панель подсказок", "sugstyle", listOf("Капсула", "Ма3: чипы"), 0))
+        cm3.addView(divider(), lp(0, dp(1)))
         cm3.addView(choiceRow("Форма служебных клавиш", "shape", listOf("Волнистая", "Скруглённая", "Капсула"), 0))
         cm3.addView(divider(), lp(0, dp(1)))
         cm3.addView(choiceRow("Начертание букв", "font", listOf("Обычное", "Среднее", "Жирное"), 0))
@@ -722,7 +751,8 @@ class SettingsActivity : Activity() {
     private fun addDevSection(root: LinearLayout) {
         val head = LinearLayout(this)
         head.orientation = LinearLayout.VERTICAL
-        head.background = round(pal.tonal, 28)
+        head.background = Ui.raised(this, pal.tonal, pal.night, 28)
+        head.elevation = dp(4).toFloat()
         head.setPadding(dp(20), dp(18), dp(20), dp(18))
         head.addView(tv("🧪 Режим разработчика", 20f, pal.text, true))
         head.addView(tv("Безумные настройки: точная высота, ряд программиста, радужные клавиши, ещё три эффекта, смелость автоисправления и перенос настроек на другой телефон.", 13f, pal.hint).apply { setPadding(0, dp(6), 0, 0) })
@@ -834,6 +864,7 @@ class SettingsActivity : Activity() {
         practice = null          // перекрасится при открытии: цвета темы могли поменяться
         practiceView = null
         fallView = null
+        presetsView = null
         controlsView = controls
         val host = FrameLayout(this)
         host.setBackgroundColor(pal.surface)
@@ -880,23 +911,27 @@ class SettingsActivity : Activity() {
                 practiceView = pg.view()
             }
             holder.addView(practiceView)
-        } else {
+        } else if (p == 2) {
             if (fallView == null) fallView = FallPage(this, pal, prefs) { fallDirty = true }.view()
             holder.addView(fallView)
+        } else {
+            // после применения пресета перерисовываем всё: могла поменяться тема
+            if (presetsView == null) presetsView = PresetsPage(this, pal, prefs) { window.decorView.post { render() } }.view()
+            holder.addView(presetsView)
         }
         updateIsland()
     }
 
-    private val islandIcons = listOf("⚙️", "🎮", "✨")
-    private val islandLabels = listOf("Управление", "Практика", "Посыпки")
+    private val islandIcons = listOf("⚙️", "🎮", "✨", "🎨")
+    private val islandLabels = listOf("Управление", "Практика", "Посыпки", "Пресеты")
 
     private fun buildIsland(): View {
         val box = LinearLayout(this)
         box.orientation = LinearLayout.HORIZONTAL
         box.gravity = Gravity.CENTER_VERTICAL
         box.setPadding(dp(6), dp(6), dp(6), dp(6))
-        box.background = round(pal.container, 32)
-        box.elevation = dp(8).toFloat()
+        box.background = Ui.raised(this, pal.container, pal.night, 32)
+        box.elevation = dp(12).toFloat()
         islandItems.clear()
         for (i in islandIcons.indices) {
             val t = tv(islandIcons[i], 16f, pal.text, true)
@@ -917,13 +952,15 @@ class SettingsActivity : Activity() {
                 t.text = islandIcons[i] + "  " + islandLabels[i]
                 t.minWidth = dp(120)
                 t.setPadding(dp(20), 0, dp(20), 0)
-                t.background = round(pal.tonal, 26)
+                t.background = Ui.raised(this, pal.tonal, pal.night, 26)
+                t.elevation = dp(2).toFloat()
                 t.setTextColor(pal.text)
             } else {
                 t.text = islandIcons[i]
                 t.minWidth = dp(56)
                 t.setPadding(dp(14), 0, dp(14), 0)
                 t.background = null
+                t.elevation = 0f
                 t.setTextColor(pal.hint)
             }
         }

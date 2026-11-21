@@ -293,8 +293,9 @@ class PixelIME : InputMethodService() {
         val capBg = GradientDrawable()
         capBg.setColor(pal.keyA)
         capBg.cornerRadius = dp(20).toFloat()
-        capsule.background = capBg
-        capsule.setPadding(dp(6), 0, dp(6), 0)
+        val m3Chips = pal.sugStyle == 1          // подсказки отдельными чипами в стиле ма3
+        if (!m3Chips) capsule.background = capBg
+        capsule.setPadding(if (m3Chips) 0 else dp(6), 0, if (m3Chips) 0 else dp(6), 0)
 
         // три подсказки T9
         val sb = LinearLayout(this)
@@ -313,9 +314,18 @@ class PixelIME : InputMethodService() {
                 it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 sugTap(i)
             }
-            sb.addView(t, LinearLayout.LayoutParams(0, MATCH, 1f))
+            if (m3Chips) {
+                val clp = LinearLayout.LayoutParams(0, dp(34), 1f)
+                clp.setMargins(dp(3), 0, dp(3), 0)
+                t.setPadding(dp(10), 0, dp(10), 0)
+                t.setAutoSizeTextTypeUniformWithConfiguration(12, 17, 1, TypedValue.COMPLEX_UNIT_SP)
+                chipRipple(t)
+                sb.addView(t, clp)
+            } else {
+                sb.addView(t, LinearLayout.LayoutParams(0, MATCH, 1f))
+            }
             sugViews.add(t)
-            if (i < 2) {
+            if (i < 2 && !m3Chips) {
                 val dv = View(this)
                 dv.setBackgroundColor(pal.pressed)
                 sb.addView(dv, LinearLayout.LayoutParams(dp(1), dp(16)))
@@ -826,7 +836,42 @@ class PixelIME : InputMethodService() {
                 tv.text = s ?: ""
                 tv.setTextColor(pal.text)
             }
+            if (pal.sugStyle == 1) styleChip(tv, if (placeholder && i == 1) 3 else if (s == null) 0 else if (i == 0) 1 else 2)
         }
+    }
+
+    /** Чип подсказки в стиле ма3: 1 = главная (тональная), 2 = остальные (с контуром), 3 = заглушка T9, 0 = пусто. */
+    private fun styleChip(tv: TextView, kind: Int) {
+        val g = GradientDrawable()
+        g.cornerRadius = dp(17).toFloat()
+        when (kind) {
+            1 -> {
+                g.setColor(pal.tonal)
+                tv.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            }
+            2 -> {
+                g.setColor(android.graphics.Color.TRANSPARENT)
+                g.setStroke(dp(1), pal.line)
+                tv.typeface = Typeface.DEFAULT
+            }
+            3 -> {
+                g.setColor(pal.keyA)
+                tv.typeface = Typeface.DEFAULT
+            }
+            else -> {
+                g.setColor(android.graphics.Color.TRANSPARENT)
+                tv.typeface = Typeface.DEFAULT
+            }
+        }
+        tv.background = g
+    }
+
+    private fun chipRipple(v: View) {
+        val mask = GradientDrawable()
+        mask.setColor(android.graphics.Color.WHITE)
+        mask.cornerRadius = dp(17).toFloat()
+        val tint = (pal.text and 0x00FFFFFF) or (0x1F shl 24)
+        v.foreground = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(tint), null, mask)
     }
 
     private fun sugTap(i: Int) {
