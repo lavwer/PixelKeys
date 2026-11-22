@@ -5,15 +5,16 @@ import android.animation.ObjectAnimator
 import android.animation.StateListAnimator
 import android.content.Context
 import android.graphics.Color
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Build
 import android.view.View
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 
 /**
- * Объём в стиле ма3: поверхности с мягким градиентом и светлой кромкой, подъём с тенью,
- * кнопки как клавиши с нижним бортиком, вдавленные поля ввода и «пружинка» при нажатии.
+ * Material 3 Expressive: плоские тональные поверхности с крупными скруглениями,
+ * кнопки-капсулы, у которых форма меняется при нажатии, и «пружинная» анимация.
  */
 object Ui {
     fun dp(ctx: Context, v: Int) = (v * ctx.resources.displayMetrics.density).toInt()
@@ -26,58 +27,50 @@ object Ui {
         return Color.argb(Color.alpha(a), r, g, bl)
     }
 
-    /** Приподнятая поверхность: светлее сверху, чуть темнее снизу, тонкая светлая кромка. */
+    /** Тональная поверхность без обводки и градиента. Крупные формы чуть крупнее, как в Expressive. */
     fun raised(ctx: Context, base: Int, night: Boolean, radiusDp: Int): GradientDrawable {
-        val top = mix(base, Color.WHITE, if (night) 0.08f else 0.5f)
-        val bottom = mix(base, Color.BLACK, if (night) 0.14f else 0.05f)
-        val g = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, base, bottom))
-        g.cornerRadius = dp(ctx, radiusDp).toFloat()
-        g.setStroke(dp(ctx, 1), mix(base, Color.WHITE, if (night) 0.16f else 0.85f))
+        val g = GradientDrawable()
+        g.setColor(base)
+        g.cornerRadius = dp(ctx, if (radiusDp >= 18) radiusDp + 4 else radiusDp).toFloat()
         return g
     }
 
-    /** Глянцевая поверхность по диагонали: для главного блока. */
+    /** Главный выразительный блок: сплошной яркий цвет и очень крупное скругление. */
     fun glossy(ctx: Context, base: Int, night: Boolean, radiusDp: Int): GradientDrawable {
-        val g = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(
-                mix(base, Color.WHITE, if (night) 0.18f else 0.30f),
-                base,
-                mix(base, Color.BLACK, if (night) 0.18f else 0.10f)
-            )
-        )
-        g.cornerRadius = dp(ctx, radiusDp).toFloat()
-        g.setStroke(dp(ctx, 1), mix(base, Color.WHITE, 0.4f))
+        val g = GradientDrawable()
+        g.setColor(base)
+        g.cornerRadius = dp(ctx, radiusDp + 12).toFloat()
         return g
     }
 
-    /** Вдавленная поверхность: тёмнее сверху, светлее снизу. Для полей ввода. */
+    /** Заполненное поле ввода: чуть темнее (или светлее) поверхности. */
     fun inset(ctx: Context, base: Int, night: Boolean, radiusDp: Int): GradientDrawable {
-        val top = mix(base, Color.BLACK, if (night) 0.25f else 0.07f)
-        val bottom = mix(base, Color.WHITE, if (night) 0.04f else 0.4f)
-        val g = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(top, bottom))
-        g.cornerRadius = dp(ctx, radiusDp).toFloat()
-        g.setStroke(dp(ctx, 1), mix(base, Color.BLACK, if (night) 0.35f else 0.10f))
+        val g = GradientDrawable()
+        g.setColor(mix(base, if (night) Color.WHITE else Color.BLACK, 0.06f))
+        g.cornerRadius = dp(ctx, radiusDp + 4).toFloat()
         return g
     }
 
-    /** Кнопка как клавиша: светлая грань сверху и тёмный бортик снизу. Снизу нужен отступ lipDp у содержимого. */
-    fun key3d(ctx: Context, face: Int, night: Boolean, radiusDp: Int, lipDp: Int = 3): LayerDrawable {
-        val r = dp(ctx, radiusDp).toFloat()
-        val lip = GradientDrawable()
-        lip.setColor(mix(face, Color.BLACK, if (night) 0.35f else 0.22f))
-        lip.cornerRadius = r
-        val top = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(mix(face, Color.WHITE, if (night) 0.18f else 0.32f), face)
-        )
-        top.cornerRadius = r
-        val ld = LayerDrawable(arrayOf<Drawable>(lip, top))
-        ld.setLayerInset(1, 0, 0, 0, dp(ctx, lipDp))
-        return ld
+    /**
+     * Кнопка-капсула: в покое полностью круглая, при нажатии форма «сжимается» до небольшого
+     * скругления (морфинг формы) и чуть меняется цвет. Параметры radiusDp и lipDp оставлены для совместимости.
+     */
+    fun key3d(ctx: Context, face: Int, night: Boolean, radiusDp: Int, lipDp: Int = 0): StateListDrawable {
+        val rest = GradientDrawable()
+        rest.setColor(face)
+        rest.cornerRadius = dp(ctx, 100).toFloat()
+        val pressed = GradientDrawable()
+        pressed.setColor(mix(face, if (night) Color.WHITE else Color.BLACK, 0.10f))
+        pressed.cornerRadius = dp(ctx, 14).toFloat()
+        val sld = StateListDrawable()
+        sld.addState(intArrayOf(android.R.attr.state_pressed), pressed)
+        sld.addState(intArrayOf(), rest)
+        sld.setEnterFadeDuration(90)
+        sld.setExitFadeDuration(180)
+        return sld
     }
 
-    /** Цвет тени (Android 9+): можно сделать цветное свечение под акцентными элементами. */
+    /** Цвет тени (Android 9+). */
     fun tint(v: View, color: Int) {
         if (Build.VERSION.SDK_INT >= 28) {
             v.outlineAmbientShadowColor = color
@@ -85,20 +78,22 @@ object Ui {
         }
     }
 
-    /** Лёгкая «пружинка»: элемент чуть уменьшается, пока его держат. */
+    /** Пружина: при нажатии элемент заметно сжимается, при отпускании пружинит с перелётом. */
     fun pressable(v: View) {
         val down = AnimatorSet()
         down.playTogether(
-            ObjectAnimator.ofFloat(v, View.SCALE_X, 0.97f),
-            ObjectAnimator.ofFloat(v, View.SCALE_Y, 0.97f)
+            ObjectAnimator.ofFloat(v, View.SCALE_X, 0.95f),
+            ObjectAnimator.ofFloat(v, View.SCALE_Y, 0.95f)
         )
-        down.duration = 80L
+        down.duration = 90L
+        down.interpolator = DecelerateInterpolator()
         val up = AnimatorSet()
         up.playTogether(
             ObjectAnimator.ofFloat(v, View.SCALE_X, 1f),
             ObjectAnimator.ofFloat(v, View.SCALE_Y, 1f)
         )
-        up.duration = 120L
+        up.duration = 300L
+        up.interpolator = OvershootInterpolator(3f)
         val sla = StateListAnimator()
         sla.addState(intArrayOf(android.R.attr.state_pressed), down)
         sla.addState(intArrayOf(), up)

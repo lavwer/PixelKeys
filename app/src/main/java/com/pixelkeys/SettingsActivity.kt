@@ -106,7 +106,7 @@ class SettingsActivity : Activity() {
         val c = LinearLayout(this)
         c.orientation = LinearLayout.VERTICAL
         c.background = Ui.raised(this, pal.container, pal.night, 28)
-        c.elevation = dp(2).toFloat()
+        c.elevation = 0f
         c.setPadding(dp(18), dp(8), dp(18), dp(8))
         return c
     }
@@ -129,8 +129,8 @@ class SettingsActivity : Activity() {
         val t = tv(text, 16f, if (filled) pal.onAction else pal.text, true)
         t.gravity = Gravity.CENTER
         t.background = Ui.key3d(this, if (filled) pal.action else pal.tonal, pal.night, 26)
-        t.setPadding(dp(16), 0, dp(16), dp(3))
-        t.elevation = dp(3).toFloat()
+        t.setPadding(dp(16), 0, dp(16), 0)
+        t.elevation = 0f
         t.setOnClickListener { onClick() }
         ripple(t, 26)
         Ui.pressable(t)
@@ -157,8 +157,8 @@ class SettingsActivity : Activity() {
         t.gravity = Gravity.CENTER
         if (primary) {
             t.background = Ui.key3d(this, pal.onAction, pal.night, 28)
-            t.setPadding(dp(16), 0, dp(16), dp(3))
-            t.elevation = dp(3).toFloat()
+            t.setPadding(dp(16), 0, dp(16), 0)
+            t.elevation = 0f
         } else {
             t.background = round((pal.onAction and 0x00FFFFFF) or (0x26 shl 24), 28)
             t.setPadding(dp(16), 0, dp(16), 0)
@@ -172,7 +172,7 @@ class SettingsActivity : Activity() {
     private fun chip(text: String): TextView {
         val t = tv(text, 12f, pal.text, true)
         t.background = Ui.raised(this, pal.tonal, pal.night, 14)
-        t.elevation = dp(1).toFloat()
+        t.elevation = 0f
         t.setPadding(dp(12), dp(5), dp(12), dp(5))
         return t
     }
@@ -181,12 +181,12 @@ class SettingsActivity : Activity() {
         val c = LinearLayout(this)
         c.orientation = LinearLayout.VERTICAL
         c.background = Ui.raised(this, pal.container, pal.night, 26)
-        c.elevation = dp(2).toFloat()
+        c.elevation = 0f
         c.setPadding(dp(16), dp(16), dp(16), dp(18))
         val badge = tv(emoji, 22f, pal.text)
         badge.gravity = Gravity.CENTER
         badge.background = Ui.raised(this, pal.tonal, pal.night, 16)
-        badge.elevation = dp(2).toFloat()
+        badge.elevation = 0f
         c.addView(badge, LinearLayout.LayoutParams(dp(46), dp(46)))
         val t = tv(title, 16f, pal.text, true)
         t.setPadding(0, dp(12), 0, dp(4))
@@ -300,7 +300,7 @@ class SettingsActivity : Activity() {
             roundClip(outer, 28)
         } else {
             outer.background = Ui.raised(this, kb.bg, kb.night, 28)
-            outer.elevation = dp(4).toFloat()
+            outer.elevation = 0f
         }
         outer.setPadding(dp(8), dp(10), dp(8), dp(10))
 
@@ -473,7 +473,7 @@ class SettingsActivity : Activity() {
         val hero = LinearLayout(this)
         hero.orientation = LinearLayout.VERTICAL
         hero.background = Ui.glossy(this, pal.action, pal.night, 28)
-        hero.elevation = dp(8).toFloat()
+        hero.elevation = 0f
         Ui.tint(hero, pal.action)
         hero.setPadding(dp(22), dp(26), dp(22), dp(22))
         hero.addView(tv(if (prefs.getInt("ny", 1) == 0) "🎄 Новогодняя клавиатура" else "Клавиатура", 14f, pal.onAction, true))
@@ -752,7 +752,7 @@ class SettingsActivity : Activity() {
         val head = LinearLayout(this)
         head.orientation = LinearLayout.VERTICAL
         head.background = Ui.raised(this, pal.tonal, pal.night, 28)
-        head.elevation = dp(4).toFloat()
+        head.elevation = 0f
         head.setPadding(dp(20), dp(18), dp(20), dp(18))
         head.addView(tv("🧪 Режим разработчика", 20f, pal.text, true))
         head.addView(tv("Безумные настройки: точная высота, ряд программиста, радужные клавиши, ещё три эффекта, смелость автоисправления и перенос настроек на другой телефон.", 13f, pal.hint).apply { setPadding(0, dp(6), 0, 0) })
@@ -900,6 +900,7 @@ class SettingsActivity : Activity() {
             return
         }
         if (page == 1 && p != 1) practice?.stop()
+        val changed = p != page
         page = p
         holder.removeAllViews()
         if (p == 0) {
@@ -919,6 +920,14 @@ class SettingsActivity : Activity() {
             if (presetsView == null) presetsView = PresetsPage(this, pal, prefs) { window.decorView.post { render() } }.view()
             holder.addView(presetsView)
         }
+        // выразительное появление страницы: плавно и с лёгким перелётом
+        val shown = holder.getChildAt(0)
+        if (changed && shown != null) {
+            shown.alpha = 0f
+            shown.translationY = dp(18).toFloat()
+            shown.animate().alpha(1f).translationY(0f).setDuration(320L)
+                .setInterpolator(android.view.animation.OvershootInterpolator(1.4f)).start()
+        }
         updateIsland()
     }
 
@@ -930,8 +939,8 @@ class SettingsActivity : Activity() {
         box.orientation = LinearLayout.HORIZONTAL
         box.gravity = Gravity.CENTER_VERTICAL
         box.setPadding(dp(6), dp(6), dp(6), dp(6))
-        box.background = Ui.raised(this, pal.container, pal.night, 32)
-        box.elevation = dp(12).toFloat()
+        box.background = Ui.raised(this, pal.action, pal.night, 36)
+        box.elevation = dp(6).toFloat()
         islandItems.clear()
         for (i in islandIcons.indices) {
             val t = tv(islandIcons[i], 16f, pal.text, true)
@@ -952,16 +961,16 @@ class SettingsActivity : Activity() {
                 t.text = islandIcons[i] + "  " + islandLabels[i]
                 t.minWidth = dp(120)
                 t.setPadding(dp(20), 0, dp(20), 0)
-                t.background = Ui.raised(this, pal.tonal, pal.night, 26)
-                t.elevation = dp(2).toFloat()
-                t.setTextColor(pal.text)
+                t.background = Ui.raised(this, pal.onAction, pal.night, 26)
+                t.elevation = 0f
+                t.setTextColor(pal.action)
             } else {
                 t.text = islandIcons[i]
                 t.minWidth = dp(56)
                 t.setPadding(dp(14), 0, dp(14), 0)
                 t.background = null
                 t.elevation = 0f
-                t.setTextColor(pal.hint)
+                t.setTextColor(pal.onAction)
             }
         }
     }

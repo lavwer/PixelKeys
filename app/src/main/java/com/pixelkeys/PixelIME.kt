@@ -171,6 +171,27 @@ class PixelIME : InputMethodService() {
         return buildRoot()
     }
 
+    /** Когда поле ввода снова в фокусе после голосового экрана, вставляем распознанный текст. */
+    override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
+        super.onStartInput(attribute, restarting)
+        val text = VoiceBridge.take() ?: return
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(1, 0)
+        val lead = if (!before.isNullOrEmpty() && !before[0].isWhitespace()) " " else ""
+        ic.commitText(lead + text, 1)
+    }
+
+    private fun startVoice() {
+        VoiceBridge.lang = if (lang == 0) "ru-RU" else "en-US"
+        val i = Intent(this, VoiceActivity::class.java)
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        try {
+            startActivity(i)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Не удалось открыть голосовой ввод", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         val sp = getSharedPreferences("ui", Context.MODE_PRIVATE)
@@ -553,6 +574,7 @@ class PixelIME : InputMethodService() {
         val enterW = symW
         val globeW = if (minimal) 0f else if (withPunct) 1f else 1.5f
         val punctW = if (withPunct) 2f else 0f
+        val micW = if (minimal) 0f else 0.8f      // узкая кнопка голосового ввода рядом с пробелом
 
         val sym = Key(this, pal, Key.SPECIAL).apply {
             weight = symW
@@ -572,11 +594,17 @@ class PixelIME : InputMethodService() {
             onLong = { showPicker() }
         }
         val space = Key(this, pal).apply {
-            weight = tgt - (symW + enterW + globeW + punctW)
+            weight = tgt - (symW + enterW + globeW + punctW + micW)
             textSp = 13f
             label = if (ru) "Русский" else "English"
             onTap = { type(" ") }
             if (minimal) onLong = { switchLang() }   // без глобуса язык меняется долгим нажатием на пробел
+        }
+        val mic = Key(this, pal, Key.SPECIAL).apply {
+            weight = micW
+            strip = true
+            icon = ico(R.drawable.ic_mic)
+            onTap = { startVoice() }
         }
         val ek = Key(this, pal, Key.ACTION).apply {
             scallop = true
@@ -591,6 +619,7 @@ class PixelIME : InputMethodService() {
         if (withPunct) bottom.add(charKey(",", false, 22f, Key.SPECIAL))
         if (!minimal) bottom.add(globe)
         bottom.add(space)
+        if (!minimal) bottom.add(mic)
         if (withPunct) bottom.add(charKey(".", false, 22f, Key.SPECIAL))
         bottom.add(ek)
         addRow(box, bottom, tgt)

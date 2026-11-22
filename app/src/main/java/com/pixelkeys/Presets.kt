@@ -203,9 +203,6 @@ class PresetsPage(
                         row == 2 && i == 0 -> col[2]
                         else -> col[1]
                     }
-                    p.color = Ui.mix(kc, Color.BLACK, 0.3f)
-                    r.set(x, y + 1.5f * d, x + kw, y + kh + 1.5f * d)
-                    c.drawRoundRect(r, rad, rad, p)
                     p.color = kc
                     r.set(x, y, x + kw, y + kh)
                     c.drawRoundRect(r, rad, rad, p)
@@ -225,8 +222,8 @@ class PresetsPage(
         val card = LinearLayout(act)
         card.orientation = LinearLayout.VERTICAL
         card.setPadding(dp(10), dp(10), dp(10), dp(12))
-        card.background = Ui.raised(act, if (active) pal.tonal else pal.container, pal.night, 24)
-        card.elevation = if (active) dp(6).toFloat() else dp(2).toFloat()
+        card.background = Ui.raised(act, if (active) pal.tonal else pal.container, pal.night, if (active) 34 else 24)
+        card.elevation = 0f
         card.addView(MiniKb(act, p.colors, p.radiusPct), lp(0, dp(78)))
         val title = tv(p.icon + "  " + p.name, 16f, pal.text, true)
         title.setPadding(dp(4), dp(10), dp(4), 0)
@@ -250,8 +247,8 @@ class PresetsPage(
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
         row.setPadding(dp(16), dp(14), dp(16), dp(14))
-        row.background = Ui.raised(act, if (active) pal.tonal else pal.container, pal.night, 24)
-        row.elevation = if (active) dp(6).toFloat() else dp(2).toFloat()
+        row.background = Ui.raised(act, if (active) pal.tonal else pal.container, pal.night, if (active) 34 else 24)
+        row.elevation = 0f
         val ic = tv(p.icon, 30f, pal.text)
         row.addView(ic)
         val col = LinearLayout(act)
@@ -276,7 +273,7 @@ class PresetsPage(
         root.orientation = LinearLayout.VERTICAL
         root.setPadding(dp(16), dp(28), dp(16), dp(110))
 
-        root.addView(tv("Пресеты", 28f, pal.text, true))
+        root.addView(tv("Пресеты", 34f, pal.text, true))
         val sub = tv("Готовые сборки клавиатуры и эффектов. Одно нажатие применяет всё.", 14f, pal.hint)
         sub.setPadding(0, dp(4), 0, 0)
         root.addView(sub)

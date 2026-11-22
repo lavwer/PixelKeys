@@ -141,7 +141,7 @@ class PracticePage(
         val c = LinearLayout(act)
         c.orientation = LinearLayout.VERTICAL
         c.background = Ui.raised(act, pal.container, pal.night, 28)
-        c.elevation = dp(2).toFloat()
+        c.elevation = 0f
         c.setPadding(dp(18), dp(8), dp(18), dp(8))
         return c
     }
@@ -158,8 +158,8 @@ class PracticePage(
         val t = tv(text, 16f, if (filled) pal.onAction else pal.text, true)
         t.gravity = Gravity.CENTER
         t.background = Ui.key3d(act, if (filled) pal.action else pal.tonal, pal.night, 26)
-        t.setPadding(dp(16), 0, dp(16), dp(3))
-        t.elevation = dp(3).toFloat()
+        t.setPadding(dp(16), 0, dp(16), 0)
+        t.elevation = 0f
         t.setOnClickListener { onClick() }
         ripple(t, 26)
         Ui.pressable(t)
@@ -172,7 +172,7 @@ class PracticePage(
         b.gravity = Gravity.CENTER
         b.setPadding(dp(8), dp(10), dp(8), dp(10))
         b.background = Ui.raised(act, pal.tonal, pal.night, 18)
-        b.elevation = dp(1).toFloat()
+        b.elevation = 0f
         l.gravity = Gravity.CENTER
         v.gravity = Gravity.CENTER
         b.addView(l)
@@ -189,7 +189,7 @@ class PracticePage(
         root.orientation = LinearLayout.VERTICAL
         root.setPadding(dp(16), dp(28), dp(16), dp(110))
 
-        root.addView(tv("Тренажёр", 28f, pal.text, true))
+        root.addView(tv("Тренажёр", 34f, pal.text, true))
         val sub = tv("Проверь клавиатуру в деле: скорость, слова и реакция. Результаты остаются на телефоне.", 14f, pal.hint)
         sub.setPadding(0, dp(4), 0, 0)
         root.addView(sub)
@@ -599,14 +599,14 @@ class PracticePage(
         for (i in modeBtns.indices) {
             val sel = i == mode
             modeBtns[i].text = (if (sel) "✓ " else "") + modeNames[i]
-            modeBtns[i].background = if (sel) Ui.raised(act, pal.tonal, pal.night, 22) else round(pal.container, 22)
-            modeBtns[i].elevation = if (sel) dp(3).toFloat() else 0f
+            modeBtns[i].background = if (sel) Ui.raised(act, pal.tonal, pal.night, 22) else round(pal.container, 12)
+            modeBtns[i].elevation = 0f
         }
         for (i in langBtns.indices) {
             val sel = i == lang
             langBtns[i].text = (if (sel) "✓ " else "") + langNames[i]
-            langBtns[i].background = if (sel) Ui.raised(act, pal.tonal, pal.night, 19) else round(pal.container, 19)
-            langBtns[i].elevation = if (sel) dp(3).toFloat() else 0f
+            langBtns[i].background = if (sel) Ui.raised(act, pal.tonal, pal.night, 19) else round(pal.container, 10)
+            langBtns[i].elevation = 0f
         }
     }
 

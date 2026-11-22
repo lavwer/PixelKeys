@@ -43,6 +43,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     var repeatable: Boolean = false
     var preview: Boolean = false      // показывать увеличенную букву над клавишей
     var haptic: Boolean = true
+    var strip: Boolean = false        // узкая вертикальная капсула («полоска»)
     var scallop: Boolean = false      // форма «волнистый квадрат» (бугорки по краям)
     var onTap: () -> Unit = {}
     var onLong: (() -> Unit)? = null
@@ -81,7 +82,8 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
         rect.set(m, m * 1.2f, width - m, height - m * 1.2f)
         val base = pal.radiusPct / 100f * 24f * d      // скругление задаётся в настройках
         val pill = minOf(rect.width(), rect.height()) / 2f
-        val r = base + (pill - base) * morph
+        val baseR = if (strip) pill else base
+        val r = baseR + (pill - baseR) * morph
         val highlighted = active || kind == ACTION
 
         if (!(kind == FLAT && !down && !active)) {
