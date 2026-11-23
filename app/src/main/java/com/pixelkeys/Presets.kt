@@ -222,7 +222,7 @@ class PresetsPage(
         val card = LinearLayout(act)
         card.orientation = LinearLayout.VERTICAL
         card.setPadding(dp(10), dp(10), dp(10), dp(12))
-        card.background = Ui.raised(act, if (active) pal.tonal else pal.container, pal.night, if (active) 34 else 24)
+        card.background = Ui.blob(act, if (active) pal.tonal else pal.container, p.id)
         card.elevation = 0f
         card.addView(MiniKb(act, p.colors, p.radiusPct), lp(0, dp(78)))
         val title = tv(p.icon + "  " + p.name, 16f, pal.text, true)
@@ -246,20 +246,24 @@ class PresetsPage(
         val row = LinearLayout(act)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
-        row.setPadding(dp(16), dp(14), dp(16), dp(14))
-        row.background = Ui.raised(act, if (active) pal.tonal else pal.container, pal.night, if (active) 34 else 24)
+        row.setPadding(dp(14), dp(12), dp(20), dp(12))
+        row.background = Ui.raised(act, if (active) pal.action else pal.tonal, pal.night, 50)
         row.elevation = 0f
-        val ic = tv(p.icon, 30f, pal.text)
-        row.addView(ic)
+        val fg = if (active) pal.onAction else pal.text
+        val sub = if (active) pal.onAction else pal.hint
+        val ic = tv(p.icon, 26f, pal.text)
+        ic.gravity = Gravity.CENTER
+        ic.background = Ui.PolarShape(if (active) pal.onAction else pal.action, 8, 0.1f)
+        row.addView(ic, LinearLayout.LayoutParams(dp(54), dp(54)))
         val col = LinearLayout(act)
         col.orientation = LinearLayout.VERTICAL
         col.setPadding(dp(14), 0, dp(8), 0)
-        col.addView(tv(p.name, 17f, pal.text, true))
-        val note = tv(p.note, 12f, pal.hint)
+        col.addView(tv(p.name, 17f, fg, true))
+        val note = tv(p.note, 12f, sub)
         note.setPadding(0, dp(2), 0, 0)
         col.addView(note)
         row.addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(tv(if (active) "✓" else "", 20f, pal.accent, true))
+        row.addView(tv(if (active) "✓" else "", 20f, fg, true))
         row.setOnClickListener { apply(p) }
         ripple(row, 24)
         return row
@@ -273,7 +277,9 @@ class PresetsPage(
         root.orientation = LinearLayout.VERTICAL
         root.setPadding(dp(16), dp(28), dp(16), dp(110))
 
-        root.addView(tv("Пресеты", 34f, pal.text, true))
+        val ttl = tv("Пресеты", 46f, pal.text)
+        Ui.display(ttl, 46f)
+        root.addView(ttl)
         val sub = tv("Готовые сборки клавиатуры и эффектов. Одно нажатие применяет всё.", 14f, pal.hint)
         sub.setPadding(0, dp(4), 0, 0)
         root.addView(sub)

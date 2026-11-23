@@ -4,7 +4,15 @@ import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.StateListAnimator
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.Drawable
+import android.widget.TextView
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Build
@@ -99,4 +107,80 @@ object Ui {
         sla.addState(intArrayOf(), up)
         v.stateListAnimator = sla
     }
+
+    /** Фигура на полярных координатах: «печенье» (много бугров) или «клевер» (4 доли), как в референсе Expressive. */
+    class PolarShape(
+        private val color: Int,
+        private val bumps: Int,
+        private val amp: Float,
+        private val sizePx: Int = -1
+    ) : Drawable() {
+        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val path = Path()
+
+        override fun draw(c: Canvas) {
+            val b = bounds
+            if (b.width() <= 0 || b.height() <= 0) return
+            val cx = b.exactCenterX()
+            val cy = b.exactCenterY()
+            val rad = minOf(b.width(), b.height()) / 2f / (1f + amp)
+            path.reset()
+            val n = 140
+            for (i in 0..n) {
+                val t = i * 2.0 * Math.PI / n
+                val rr = rad * (1.0 + amp * Math.cos(bumps * t))
+                val x = (cx + rr * Math.cos(t)).toFloat()
+                val y = (cy + rr * Math.sin(t)).toFloat()
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+            p.color = color
+            c.drawPath(path, p)
+        }
+
+        override fun setAlpha(alpha: Int) {
+            p.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: ColorFilter?) {
+            p.colorFilter = colorFilter
+        }
+
+        @Suppress("DEPRECATION")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+
+        override fun getIntrinsicWidth(): Int = sizePx
+
+        override fun getIntrinsicHeight(): Int = sizePx
+    }
+
+    /** Асимметричные скругления: большие и малые углы чередуются, поэтому карточки не похожи друг на друга. */
+    fun blob(ctx: Context, base: Int, variant: Int): GradientDrawable {
+        val big = dp(ctx, 56).toFloat()
+        val mid = dp(ctx, 36).toFloat()
+        val small = dp(ctx, 16).toFloat()
+        val g = GradientDrawable()
+        g.setColor(base)
+        when (variant % 4) {
+            0 -> g.cornerRadius = mid
+            1 -> g.cornerRadii = floatArrayOf(big, big, small, small, big, big, small, small)
+            2 -> g.cornerRadii = floatArrayOf(small, small, big, big, small, small, big, big)
+            else -> g.cornerRadii = floatArrayOf(big, big, big, big, big, big, small, small)
+        }
+        return g
+    }
+
+    /** Плакатная типографика: очень жирный шрифт, плотные строки. */
+    fun display(t: TextView, sp: Float) {
+        t.typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
+        t.textSize = sp
+        t.setLineSpacing(0f, 0.9f)
+        t.letterSpacing = -0.02f
+        t.includeFontPadding = false
+    }
+
+    /** «Чернильные» цвета для выбранных элементов: тёмный на светлой теме, светлый на тёмной. */
+    fun inkBg(night: Boolean): Int = Color.parseColor(if (night) "#ECE6F5" else "#1D1B24")
+
+    fun inkFg(night: Boolean): Int = Color.parseColor(if (night) "#1D1B24" else "#F5F0FF")
 }

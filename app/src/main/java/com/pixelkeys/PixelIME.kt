@@ -119,6 +119,10 @@ class PixelIME : InputMethodService() {
     }
 
     override fun onDestroy() {
+        try {
+            recognizer?.destroy()
+        } catch (e: Exception) {
+        }
         cm.removePrimaryClipChangedListener(clipListener)
         mainH.removeCallbacks(sugRun)
         super.onDestroy()
@@ -169,6 +173,121 @@ class PixelIME : InputMethodService() {
         loadPrefs()
         pal = Palette(this, themeMode)
         return buildRoot()
+    }
+
+    // ---- голосовой ввод прямо в клавиатуре (без окна Google на весь экран) ----
+    private var recognizer: android.speech.SpeechRecognizer? = null
+    private var listening = false
+    private var micKey: Key? = null
+    private var micLead = ""
+    private var micPulse: android.animation.ValueAnimator? = null
+
+    private fun toggleVoice() {
+        if (listening) {
+            recognizer?.stopListening()
+            return
+        }
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val pi = Intent(this, MicPermissionActivity::class.java)
+            pi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            startActivity(pi)
+            return
+        }
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
+            startVoice()   // запасной путь: системное окно распознавания
+            return
+        }
+        startListening()
+    }
+
+    private fun startListening() {
+        releaseVoice()
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(1, 0)
+        micLead = if (!before.isNullOrEmpty() && !before[0].isWhitespace()) " " else ""
+        val r = android.speech.SpeechRecognizer.createSpeechRecognizer(this)
+        recognizer = r
+        r.setRecognitionListener(object : android.speech.RecognitionListener {
+            override fun onReadyForSpeech(params: android.os.Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+            override fun onPartialResults(partialResults: android.os.Bundle?) {
+                val t = partialResults?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
+                if (t.isNotBlank()) currentInputConnection?.setComposingText(micLead + t, 1)
+            }
+            override fun onResults(results: android.os.Bundle?) {
+                val t = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                val c2 = currentInputConnection
+                if (c2 != null) {
+                    if (!t.isNullOrBlank()) c2.commitText(micLead + t, 1) else c2.finishComposingText()
+                }
+                releaseVoice()
+            }
+            override fun onError(error: Int) {
+                currentInputConnection?.finishComposingText()
+                releaseVoice()
+                if (error == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    android.widget.Toast.makeText(this@PixelIME, "Нет доступа к микрофону", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
+        val i = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, if (lang == 0) "ru-RU" else "en-US")
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        i.putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+        r.startListening(i)
+        listening = true
+        updateMic()
+    }
+
+    private fun releaseVoice() {
+        listening = false
+        val r = recognizer
+        recognizer = null
+        mainH.post {
+            try {
+                r?.cancel()
+                r?.destroy()
+            } catch (e: Exception) {
+            }
+        }
+        updateMic()
+    }
+
+    /** Пока идёт запись, кнопка микрофона горит акцентом и пульсирует, а в панели подсказок написано «Слушаю…». */
+    private fun updateMic() {
+        val k = micKey
+        micPulse?.cancel()
+        if (k != null) {
+            k.active = listening
+            k.invalidate()
+            if (listening) {
+                val a = android.animation.ValueAnimator.ofFloat(1f, 1.15f)
+                a.duration = 520L
+                a.repeatMode = android.animation.ValueAnimator.REVERSE
+                a.repeatCount = android.animation.ValueAnimator.INFINITE
+                a.addUpdateListener {
+                    val v = it.animatedValue as Float
+                    k.scaleX = v
+                    k.scaleY = v
+                }
+                micPulse = a
+                a.start()
+            } else {
+                k.scaleX = 1f
+                k.scaleY = 1f
+            }
+        }
+        updateSuggestions()
+    }
+
+    override fun onFinishInput() {
+        releaseVoice()
+        super.onFinishInput()
     }
 
     /** Когда поле ввода снова в фокусе после голосового экрана, вставляем распознанный текст. */
@@ -604,7 +723,9 @@ class PixelIME : InputMethodService() {
             weight = micW
             strip = true
             icon = ico(R.drawable.ic_mic)
-            onTap = { startVoice() }
+            onTap = { toggleVoice() }
+            active = listening
+            micKey = this
         }
         val ek = Key(this, pal, Key.ACTION).apply {
             scallop = true
@@ -859,7 +980,7 @@ class PixelIME : InputMethodService() {
             sugText[i] = s
             val tv = sugViews[i]
             if (placeholder && i == 1) {
-                tv.text = "T9"
+                tv.text = if (listening) "Слушаю…" else "T9"
                 tv.setTextColor(pal.hint)
             } else {
                 tv.text = s ?: ""

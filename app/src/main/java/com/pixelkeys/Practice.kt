@@ -189,7 +189,9 @@ class PracticePage(
         root.orientation = LinearLayout.VERTICAL
         root.setPadding(dp(16), dp(28), dp(16), dp(110))
 
-        root.addView(tv("Тренажёр", 34f, pal.text, true))
+        val ttl = tv("Тренажёр", 46f, pal.text)
+        Ui.display(ttl, 46f)
+        root.addView(ttl)
         val sub = tv("Проверь клавиатуру в деле: скорость, слова и реакция. Результаты остаются на телефоне.", 14f, pal.hint)
         sub.setPadding(0, dp(4), 0, 0)
         root.addView(sub)
@@ -243,7 +245,7 @@ class PracticePage(
         c.addView(stats, lp(14))
 
         prev = tv("", 22f, pal.hint)
-        prev.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        prev.typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
         prev.gravity = Gravity.CENTER
         prev.minHeight = dp(110)
         prev.setPadding(dp(4), dp(18), dp(4), dp(14))
@@ -599,13 +601,15 @@ class PracticePage(
         for (i in modeBtns.indices) {
             val sel = i == mode
             modeBtns[i].text = (if (sel) "✓ " else "") + modeNames[i]
-            modeBtns[i].background = if (sel) Ui.raised(act, pal.tonal, pal.night, 22) else round(pal.container, 12)
+            modeBtns[i].background = if (sel) Ui.raised(act, Ui.inkBg(pal.night), pal.night, 22) else round(pal.container, 22)
+            modeBtns[i].setTextColor(if (sel) Ui.inkFg(pal.night) else pal.hint)
             modeBtns[i].elevation = 0f
         }
         for (i in langBtns.indices) {
             val sel = i == lang
             langBtns[i].text = (if (sel) "✓ " else "") + langNames[i]
-            langBtns[i].background = if (sel) Ui.raised(act, pal.tonal, pal.night, 19) else round(pal.container, 10)
+            langBtns[i].background = if (sel) Ui.raised(act, Ui.inkBg(pal.night), pal.night, 19) else round(pal.container, 19)
+            langBtns[i].setTextColor(if (sel) Ui.inkFg(pal.night) else pal.hint)
             langBtns[i].elevation = 0f
         }
     }

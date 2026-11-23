@@ -44,6 +44,8 @@ class FallPage(
     private lateinit var empty: TextView
     private lateinit var offBtn: TextView
     private val cards = ArrayList<LinearLayout>()
+    private val nmViews = ArrayList<TextView>()
+    private val ntViews = ArrayList<TextView>()
 
     private fun dp(v: Int) = (v * act.resources.displayMetrics.density).toInt()
 
@@ -112,14 +114,16 @@ class FallPage(
         root.orientation = LinearLayout.VERTICAL
         root.setPadding(dp(16), dp(28), dp(16), dp(110))
 
-        root.addView(tv("Посыпки", 34f, pal.text, true))
+        val ttl = tv("Посыпки", 46f, pal.text)
+        Ui.display(ttl, 46f)
+        root.addView(ttl)
         val sub = tv("Что падает сверху клавиатуры. Бесконечно, и каждый раз по-разному.", 14f, pal.hint)
         sub.setPadding(0, dp(4), 0, 0)
         root.addView(sub)
 
         // живое превью
         val box = FrameLayout(act)
-        box.background = Ui.raised(act, pal.bg, pal.night, 28)
+        box.background = Ui.raised(act, pal.bg, pal.night, 48)
         box.elevation = 0f
         box.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(v: View, o: Outline) {
@@ -150,14 +154,17 @@ class FallPage(
                 cv.minimumHeight = dp(150)
                 val ic = tv(icons[i], 34f, pal.text)
                 ic.gravity = Gravity.CENTER
-                cv.addView(ic)
+                ic.background = Ui.PolarShape(pal.action, intArrayOf(8, 4, 10, 6)[i], floatArrayOf(0.1f, 0.16f, 0.08f, 0.12f)[i])
+                cv.addView(ic, LinearLayout.LayoutParams(dp(68), dp(68)))
                 val nm = tv(names[i], 17f, pal.text, true)
                 nm.gravity = Gravity.CENTER
                 nm.setPadding(0, dp(6), 0, dp(4))
                 cv.addView(nm)
+                nmViews.add(nm)
                 val nt = tv(notes[i], 12f, pal.hint)
                 nt.gravity = Gravity.CENTER
                 cv.addView(nt)
+                ntViews.add(nt)
                 cv.setOnClickListener { select(i + 1) }
                 ripple(cv, 24)
                 val p = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -256,8 +263,10 @@ class FallPage(
     private fun updateSelection() {
         for (i in cards.indices) {
             val sel = (i + 1) == cur
-            cards[i].background = Ui.raised(act, if (sel) pal.tonal else pal.container, pal.night, if (sel) 34 else 24)
+            cards[i].background = Ui.blob(act, if (sel) Ui.inkBg(pal.night) else pal.container, intArrayOf(1, 2, 3, 0)[i])
             cards[i].elevation = 0f
+            nmViews[i].setTextColor(if (sel) Ui.inkFg(pal.night) else pal.text)
+            ntViews[i].setTextColor(if (sel) Ui.mix(Ui.inkFg(pal.night), Ui.inkBg(pal.night), 0.3f) else pal.hint)
         }
         offBtn.text = if (cur == 0) "Посыпки выключены" else "Выключить посыпки"
         offBtn.setTextColor(pal.text)

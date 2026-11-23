@@ -55,6 +55,8 @@ class SettingsActivity : Activity() {
     private var fallDirty = false
 
     private val liveKeys = setOf("fxon", "morph", "hints", "bubble", "rainbow", "devrow", "ny", "nygar", "nyedge", "nysnow", "nytheme")
+    private var cardIdx = 0
+    private var spin: android.animation.ObjectAnimator? = null
     private var greetTaps = 0
     private var greetLast = 0L
 
@@ -76,6 +78,11 @@ class SettingsActivity : Activity() {
     override fun onPause() {
         practice?.stop()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        spin?.cancel()
+        super.onDestroy()
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -105,17 +112,20 @@ class SettingsActivity : Activity() {
     private fun card(): LinearLayout {
         val c = LinearLayout(this)
         c.orientation = LinearLayout.VERTICAL
-        c.background = Ui.raised(this, pal.container, pal.night, 28)
+        c.background = Ui.blob(this, pal.container, cardIdx++ % 4)
         c.elevation = 0f
-        c.setPadding(dp(18), dp(8), dp(18), dp(8))
+        c.setPadding(dp(22), dp(12), dp(22), dp(12))
         return c
     }
 
     private fun section(title: String): TextView {
         // заголовки капсом приводим к обычному написанию, смешанный регистр («Стиль Material 3») оставляем как есть
         val shown = if (title == title.uppercase()) title.lowercase().replaceFirstChar { it.uppercase() } else title
-        val t = tv(shown, 14f, pal.accent, true)
-        t.setPadding(dp(8), dp(24), 0, dp(8))
+        val t = tv(shown, 24f, pal.text)
+        Ui.display(t, 24f)
+        t.setPadding(dp(8), dp(30), 0, dp(12))
+        t.setCompoundDrawablesRelativeWithIntrinsicBounds(Ui.PolarShape(pal.accent, 8, 0.12f, dp(20)), null, null, null)
+        t.compoundDrawablePadding = dp(10)
         return t
     }
 
@@ -185,9 +195,8 @@ class SettingsActivity : Activity() {
         c.setPadding(dp(16), dp(16), dp(16), dp(18))
         val badge = tv(emoji, 22f, pal.text)
         badge.gravity = Gravity.CENTER
-        badge.background = Ui.raised(this, pal.tonal, pal.night, 16)
-        badge.elevation = 0f
-        c.addView(badge, LinearLayout.LayoutParams(dp(46), dp(46)))
+        badge.background = Ui.PolarShape(pal.tonal, if (title.length % 2 == 0) 8 else 4, if (title.length % 2 == 0) 0.1f else 0.15f)
+        c.addView(badge, LinearLayout.LayoutParams(dp(58), dp(58)))
         val t = tv(title, 16f, pal.text, true)
         t.setPadding(0, dp(12), 0, dp(4))
         c.addView(t)
@@ -444,6 +453,7 @@ class SettingsActivity : Activity() {
 
     private fun render() {
         val oldY = scroll?.scrollY ?: 0
+        cardIdx = 0
         pal = Palette(this, prefs.getInt("theme", 0), true)
         kbPal = Palette(this, prefs.getInt("theme", 0))
 
@@ -457,28 +467,22 @@ class SettingsActivity : Activity() {
         } catch (e: Exception) {
             ""
         }
-        val nav = LinearLayout(this)
-        nav.orientation = LinearLayout.HORIZONTAL
-        nav.gravity = Gravity.CENTER_VERTICAL
+        val ny = prefs.getInt("ny", 1) == 0
+        val verText = (if (ny) "🎄 " else "") + "v$ver" + (if (prefs.getInt("dev", 0) == 1) " · dev" else "")
         val logo = ImageView(this)
-        logo.setImageResource(if (prefs.getInt("ny", 1) == 0) R.drawable.ic_logo_ny else R.drawable.ic_logo)
-        nav.addView(logo, LinearLayout.LayoutParams(dp(40), dp(40)))
-        val brand = tv("Pixel Keys", 20f, pal.text, true)
-        brand.setPadding(dp(12), 0, 0, 0)
-        nav.addView(brand, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        nav.addView(chip(if (prefs.getInt("dev", 0) == 1) "v$ver · dev" else "v$ver"))
-        root.addView(nav, lp(0, dp(48)))
+        logo.setImageResource(if (ny) R.drawable.ic_logo_ny else R.drawable.ic_logo)
 
         // --- главный блок (hero) ---
         val hero = LinearLayout(this)
         hero.orientation = LinearLayout.VERTICAL
-        hero.background = Ui.glossy(this, pal.action, pal.night, 28)
-        hero.elevation = 0f
-        Ui.tint(hero, pal.action)
-        hero.setPadding(dp(22), dp(26), dp(22), dp(22))
-        hero.addView(tv(if (prefs.getInt("ny", 1) == 0) "🎄 Новогодняя клавиатура" else "Клавиатура", 14f, pal.onAction, true))
-        val h1 = tv("Печатай быстро.\nНикому не доверяй пароли.", 30f, pal.onAction, true)
-        h1.setPadding(0, dp(6), 0, dp(10))
+        hero.setPadding(dp(24), dp(24), dp(24), dp(24))
+        hero.addView(chip(verText), LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        val big = tv("Pixel\nKeys", 64f, pal.onAction)
+        Ui.display(big, 64f)
+        big.setPadding(0, dp(40), 0, dp(10))
+        hero.addView(big)
+        val h1 = tv("Печатай быстро. Никому не доверяй пароли.", 17f, pal.onAction, true)
+        h1.setPadding(0, 0, 0, dp(10))
         hero.addView(h1)
         hero.addView(tv("Умный T9, автоисправление, буфер обмена и 11 тем. Без доступа в интернет: набранное остаётся на телефоне.", 15f, pal.onAction))
         hero.addView(heroButton("Включить клавиатуру", true) {
@@ -488,7 +492,29 @@ class SettingsActivity : Activity() {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
         }, lp(10, dp(54)))
         hero.addView(previewCard(), lp(20))
-        root.addView(hero, lp(16))
+        // плакат: сплошной яркий блок с огромным названием и вращающимся «печеньем» с логотипом
+        val heroFrame = FrameLayout(this)
+        heroFrame.background = Ui.glossy(this, pal.action, pal.night, 40)
+        roundClip(heroFrame, 52)
+        val deco = View(this)
+        deco.background = Ui.PolarShape(Ui.mix(pal.action, if (pal.night) Color.WHITE else Color.BLACK, 0.16f), 10, 0.07f)
+        val dlp = FrameLayout.LayoutParams(dp(210), dp(210), Gravity.TOP or Gravity.END)
+        dlp.topMargin = -dp(40)
+        dlp.rightMargin = -dp(40)
+        heroFrame.addView(deco, dlp)
+        spin?.cancel()
+        val spinAnim = android.animation.ObjectAnimator.ofFloat(deco, View.ROTATION, 0f, 360f)
+        spinAnim.duration = 40000L
+        spinAnim.interpolator = android.view.animation.LinearInterpolator()
+        spinAnim.repeatCount = android.animation.ValueAnimator.INFINITE
+        spinAnim.start()
+        spin = spinAnim
+        heroFrame.addView(hero, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        val llp = FrameLayout.LayoutParams(dp(64), dp(64), Gravity.TOP or Gravity.END)
+        llp.topMargin = dp(33)
+        llp.rightMargin = dp(33)
+        heroFrame.addView(logo, llp)
+        root.addView(heroFrame, lp(16))
 
         // --- новый год ---
         root.addView(section("Новый год 🎄"))
@@ -934,43 +960,47 @@ class SettingsActivity : Activity() {
     private val islandIcons = listOf("⚙️", "🎮", "✨", "🎨")
     private val islandLabels = listOf("Управление", "Практика", "Посыпки", "Пресеты")
 
+    private fun islandBar(): Int =
+        if (pal.night) Ui.mix(pal.surface, Color.WHITE, 0.10f) else Ui.mix(pal.text, Color.WHITE, 0.06f)
+
     private fun buildIsland(): View {
         val box = LinearLayout(this)
         box.orientation = LinearLayout.HORIZONTAL
         box.gravity = Gravity.CENTER_VERTICAL
-        box.setPadding(dp(6), dp(6), dp(6), dp(6))
-        box.background = Ui.raised(this, pal.action, pal.night, 36)
+        box.setPadding(dp(8), dp(8), dp(8), dp(8))
+        box.background = Ui.raised(this, islandBar(), pal.night, 36)
         box.elevation = dp(6).toFloat()
         islandItems.clear()
         for (i in islandIcons.indices) {
-            val t = tv(islandIcons[i], 16f, pal.text, true)
+            val t = TextView(this)
             t.gravity = Gravity.CENTER
+            t.minWidth = dp(72)
+            t.setPadding(dp(6), dp(6), dp(6), dp(6))
             t.setOnClickListener { showPage(i) }
-            ripple(t, 26)
-            box.addView(t, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(52)))
+            ripple(t, 28)
+            box.addView(t, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(62)))
             islandItems.add(t)
         }
         return box
     }
 
-    /** Выбранная вкладка показывает значок и подпись, остальные только значок. */
+    /** Значок сверху, подпись под ним; выбранный пункт лежит в яркой капсуле. */
     private fun updateIsland() {
         for (i in islandItems.indices) {
             val t = islandItems[i]
-            if (i == page) {
-                t.text = islandIcons[i] + "  " + islandLabels[i]
-                t.minWidth = dp(120)
-                t.setPadding(dp(20), 0, dp(20), 0)
-                t.background = Ui.raised(this, pal.onAction, pal.night, 26)
-                t.elevation = 0f
-                t.setTextColor(pal.action)
-            } else {
-                t.text = islandIcons[i]
-                t.minWidth = dp(56)
-                t.setPadding(dp(14), 0, dp(14), 0)
-                t.background = null
-                t.elevation = 0f
+            val sel = i == page
+            val sp = android.text.SpannableString(islandIcons[i] + "\n" + islandLabels[i])
+            sp.setSpan(android.text.style.RelativeSizeSpan(0.62f), islandIcons[i].length, sp.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            t.text = sp
+            t.textSize = 20f
+            t.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            t.setLineSpacing(0f, 0.95f)
+            if (sel) {
+                t.background = Ui.raised(this, pal.action, pal.night, 28)
                 t.setTextColor(pal.onAction)
+            } else {
+                t.background = null
+                t.setTextColor(if (pal.night) pal.hint else Ui.mix(Color.WHITE, pal.text, 0.25f))
             }
         }
     }
