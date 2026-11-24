@@ -123,6 +123,7 @@ class PixelIME : InputMethodService() {
             recognizer?.destroy()
         } catch (e: Exception) {
         }
+        unmuteBeep()
         cm.removePrimaryClipChangedListener(clipListener)
         mainH.removeCallbacks(sugRun)
         super.onDestroy()
@@ -177,16 +178,34 @@ class PixelIME : InputMethodService() {
 
     // ---- голосовой ввод прямо в клавиатуре (без окна Google на весь экран) ----
     private var recognizer: android.speech.SpeechRecognizer? = null
-    private var listening = false
+    private var listening = false          // идёт сеанс распознавания
+    private var wantListening = false      // запись включена и человек её ещё не выключал
+    private var errStreak = 0
     private var micKey: Key? = null
     private var micLead = ""
     private var micPulse: android.animation.ValueAnimator? = null
+    private var micMuted = false
+
+    /** Общая настройка кнопки голоса: значок, режим нажатия и состояние записи. */
+    private fun setupMicKey(k: Key) {
+        k.icon = ico(if (pal.micIcon == 1) R.drawable.ic_wave else R.drawable.ic_mic)
+        if (pal.micMode == 2) {
+            k.onTap = {}
+            k.onPress = { beginVoice() }
+            k.onRelease = { stopVoice() }
+        } else {
+            k.onTap = { toggleVoice() }
+        }
+        k.active = wantListening
+        micKey = k
+    }
 
     private fun toggleVoice() {
-        if (listening) {
-            recognizer?.stopListening()
-            return
-        }
+        if (wantListening) stopVoice() else beginVoice()
+    }
+
+    private fun beginVoice() {
+        if (wantListening) return
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             val pi = Intent(this, MicPermissionActivity::class.java)
             pi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
@@ -197,14 +216,40 @@ class PixelIME : InputMethodService() {
             startVoice()   // запасной путь: системное окно распознавания
             return
         }
-        startListening()
+        wantListening = true
+        errStreak = 0
+        startListening(false)
     }
 
-    private fun startListening() {
-        releaseVoice()
-        val ic = currentInputConnection ?: return
+    /** Запись выключили: просим распознаватель выдать то, что он успел услышать. */
+    private fun stopVoice() {
+        if (!wantListening) return
+        wantListening = false
+        val r = recognizer
+        if (r == null) {
+            releaseAll()
+            return
+        }
+        try {
+            r.stopListening()
+        } catch (e: Exception) {
+            releaseAll()
+            return
+        }
+        updateMic()
+        mainH.postDelayed({ if (!wantListening && listening) releaseAll() }, 1800)
+    }
+
+    private fun startListening(restart: Boolean) {
+        releaseRecognizer()
+        val ic = currentInputConnection
+        if (ic == null) {
+            releaseAll()
+            return
+        }
         val before = ic.getTextBeforeCursor(1, 0)
         micLead = if (!before.isNullOrEmpty() && !before[0].isWhitespace()) " " else ""
+        if (restart && pal.micQuiet) muteBeep()
         val r = android.speech.SpeechRecognizer.createSpeechRecognizer(this)
         recognizer = r
         r.setRecognitionListener(object : android.speech.RecognitionListener {
@@ -218,20 +263,32 @@ class PixelIME : InputMethodService() {
                 val t = partialResults?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
                 if (t.isNotBlank()) currentInputConnection?.setComposingText(micLead + t, 1)
             }
+
             override fun onResults(results: android.os.Bundle?) {
                 val t = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 val c2 = currentInputConnection
                 if (c2 != null) {
-                    if (!t.isNullOrBlank()) c2.commitText(micLead + t, 1) else c2.finishComposingText()
+                    if (!t.isNullOrBlank()) {
+                        c2.commitText(micLead + t, 1)
+                        errStreak = 0
+                    } else {
+                        c2.finishComposingText()
+                    }
                 }
-                releaseVoice()
+                afterSegment()
             }
+
             override fun onError(error: Int) {
                 currentInputConnection?.finishComposingText()
-                releaseVoice()
+                // тишина и «не расслышал» не считаются ошибкой: в непрерывных режимах просто слушаем дальше
+                val soft = error == android.speech.SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                if (!soft) errStreak++
                 if (error == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    wantListening = false
                     android.widget.Toast.makeText(this@PixelIME, "Нет доступа к микрофону", android.widget.Toast.LENGTH_SHORT).show()
                 }
+                afterSegment()
             }
         })
         val i = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -239,12 +296,28 @@ class PixelIME : InputMethodService() {
         i.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, if (lang == 0) "ru-RU" else "en-US")
         i.putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         i.putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+        if (pal.micMode != 0) {
+            // подсказки распознавателю терпеть длинные паузы (часть сервисов их учитывает; остальное закрывает перезапуск)
+            i.putExtra("android.speech.extras.SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS", 30000L)
+            i.putExtra("android.speech.extras.SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS", 30000L)
+            i.putExtra("android.speech.extras.SPEECH_INPUT_MINIMUM_LENGTH_MILLIS", 60000L)
+        }
         r.startListening(i)
         listening = true
         updateMic()
     }
 
-    private fun releaseVoice() {
+    /** Сеанс закончился (пауза, тишина или остановка): в непрерывных режимах сразу начинаем следующий. */
+    private fun afterSegment() {
+        releaseRecognizer()
+        if (wantListening && pal.micMode != 0 && errStreak < 5) {
+            mainH.postDelayed({ if (wantListening && !listening) startListening(true) }, 150)
+        } else {
+            releaseAll()
+        }
+    }
+
+    private fun releaseRecognizer() {
         listening = false
         val r = recognizer
         recognizer = null
@@ -255,17 +328,46 @@ class PixelIME : InputMethodService() {
             } catch (e: Exception) {
             }
         }
+    }
+
+    private fun releaseAll() {
+        wantListening = false
+        releaseRecognizer()
+        unmuteBeep()
         updateMic()
     }
 
-    /** Пока идёт запись, кнопка микрофона горит акцентом и пульсирует, а в панели подсказок написано «Слушаю…». */
+    /** Между фразами распознаватель пищит при каждом запуске: на время запуска приглушаем музыкальный поток. */
+    private fun muteBeep() {
+        try {
+            val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            if (!micMuted && !am.isStreamMute(android.media.AudioManager.STREAM_MUSIC)) {
+                am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_MUTE, 0)
+                micMuted = true
+            }
+        } catch (e: Exception) {
+        }
+        mainH.postDelayed({ unmuteBeep() }, 900)
+    }
+
+    private fun unmuteBeep() {
+        if (!micMuted) return
+        try {
+            val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            am.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, 0)
+        } catch (e: Exception) {
+        }
+        micMuted = false
+    }
+
+    /** Пока запись включена, кнопка горит акцентом и пульсирует, а в панели подсказок написано «Слушаю…». */
     private fun updateMic() {
         val k = micKey
         micPulse?.cancel()
         if (k != null) {
-            k.active = listening
+            k.active = wantListening
             k.invalidate()
-            if (listening) {
+            if (wantListening) {
                 val a = android.animation.ValueAnimator.ofFloat(1f, 1.15f)
                 a.duration = 520L
                 a.repeatMode = android.animation.ValueAnimator.REVERSE
@@ -286,7 +388,7 @@ class PixelIME : InputMethodService() {
     }
 
     override fun onFinishInput() {
-        releaseVoice()
+        releaseAll()
         super.onFinishInput()
     }
 
@@ -501,9 +603,14 @@ class PixelIME : InputMethodService() {
         bar.addView(capsule, capLp)
 
         // самая правая кнопка: открыть приложение Pixel Keys
-        val ab = Key(this, pal, Key.FLAT).apply {
-            icon = ico(R.drawable.ic_app)
-            onTap = { openApp() }
+        val ab = Key(this, pal, Key.FLAT)
+        if (pal.micPos == 5) {
+            // голосовой ввод сверху справа вместо кнопки приложения; приложение открывается долгим нажатием
+            setupMicKey(ab)
+            if (pal.micMode != 2) ab.onLong = { openApp() }
+        } else {
+            ab.icon = ico(R.drawable.ic_app)
+            ab.onTap = { openApp() }
         }
         bar.addView(ab, LinearLayout.LayoutParams(dp(48), barH()))
 
@@ -693,7 +800,21 @@ class PixelIME : InputMethodService() {
         val enterW = symW
         val globeW = if (minimal) 0f else if (withPunct) 1f else 1.5f
         val punctW = if (withPunct) 2f else 0f
-        val micW = if (minimal) 0f else 0.8f      // узкая кнопка голосового ввода рядом с пробелом
+        // голосовой ввод: где стоит кнопка и какой она ширины
+        val micAt = pal.micPos
+        val canPlace = !minimal && micAt != 5
+        val replaceComma = canPlace && micAt == 2 && withPunct
+        val replacePeriod = canPlace && micAt == 3 && withPunct
+        val replaceGlobe = canPlace && micAt == 4
+        val extraMic = canPlace && !replaceComma && !replacePeriod && !replaceGlobe
+        val shapeW = when (pal.micShape) {
+            0 -> 0.8f
+            1 -> 1.3f
+            2 -> 1.25f
+            else -> 1f
+        }
+        val micW = if (extraMic) shapeW else 0f
+        val micWeight = if (replaceGlobe) globeW else if (replaceComma || replacePeriod) 1f else shapeW
 
         val sym = Key(this, pal, Key.SPECIAL).apply {
             weight = symW
@@ -717,16 +838,20 @@ class PixelIME : InputMethodService() {
             textSp = 13f
             label = if (ru) "Русский" else "English"
             onTap = { type(" ") }
-            if (minimal) onLong = { switchLang() }   // без глобуса язык меняется долгим нажатием на пробел
+            if (minimal || replaceGlobe) onLong = { switchLang() }   // без глобуса язык меняется долгим нажатием на пробел
         }
-        val mic = Key(this, pal, Key.SPECIAL).apply {
-            weight = micW
-            strip = true
-            icon = ico(R.drawable.ic_mic)
-            onTap = { toggleVoice() }
-            active = listening
-            micKey = this
+        val micKind = when (pal.micColor) {
+            1 -> Key.ACTION
+            2 -> Key.NORMAL
+            else -> Key.SPECIAL
         }
+        val mic: Key? = if (canPlace) {
+            val mk = Key(this, pal, micKind)
+            mk.weight = micWeight
+            if (pal.micShape == 2) mk.scallop = true else if (pal.micShape <= 1) mk.strip = true
+            setupMicKey(mk)
+            mk
+        } else null
         val ek = Key(this, pal, Key.ACTION).apply {
             scallop = true
             weight = enterW
@@ -737,11 +862,12 @@ class PixelIME : InputMethodService() {
 
         val bottom = ArrayList<Key>()
         bottom.add(sym)
-        if (withPunct) bottom.add(charKey(",", false, 22f, Key.SPECIAL))
-        if (!minimal) bottom.add(globe)
+        if (withPunct) bottom.add(if (replaceComma && mic != null) mic else charKey(",", false, 22f, Key.SPECIAL))
+        if (!minimal) bottom.add(if (replaceGlobe && mic != null) mic else globe)
+        if (extraMic && micAt == 1 && mic != null) bottom.add(mic)
         bottom.add(space)
-        if (!minimal) bottom.add(mic)
-        if (withPunct) bottom.add(charKey(".", false, 22f, Key.SPECIAL))
+        if (extraMic && micAt != 1 && mic != null) bottom.add(mic)
+        if (withPunct) bottom.add(if (replacePeriod && mic != null) mic else charKey(".", false, 22f, Key.SPECIAL))
         bottom.add(ek)
         addRow(box, bottom, tgt)
         count++
@@ -980,7 +1106,7 @@ class PixelIME : InputMethodService() {
             sugText[i] = s
             val tv = sugViews[i]
             if (placeholder && i == 1) {
-                tv.text = if (listening) "Слушаю…" else "T9"
+                tv.text = if (wantListening) "Слушаю…" else "T9"
                 tv.setTextColor(pal.hint)
             } else {
                 tv.text = s ?: ""

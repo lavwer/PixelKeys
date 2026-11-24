@@ -64,9 +64,10 @@ class SettingsActivity : Activity() {
         "theme", "height", "punct", "t9", "autocorr", "autoany", "numrow", "minimal",
         "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "fxon", "fx", "font", "shape", "morph", "hints",
         "bubble", "bpad", "hpad", "hue", "sat", "dh", "devrow", "rainbow", "fxdur", "fxpow", "aggr",
-        "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind", "sugstyle"
+        "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind", "sugstyle",
+        "micmode", "micpos", "micshape", "miccolor", "micicon", "micquiet"
     )
-    private val codeMax = mapOf("theme" to 10, "height" to 3, "numrow" to 2, "shape" to 2, "font" to 2, "fx" to 7, "nyfx" to 5, "fall" to 4, "sugstyle" to 1)
+    private val codeMax = mapOf("theme" to 10, "height" to 3, "numrow" to 2, "shape" to 2, "font" to 2, "fx" to 7, "nyfx" to 5, "fall" to 4, "sugstyle" to 1, "micmode" to 2, "micpos" to 5, "micshape" to 3, "miccolor" to 2, "micicon" to 1)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -640,6 +641,24 @@ class SettingsActivity : Activity() {
         cm3.addView(divider(), lp(0, dp(1)))
         cm3.addView(sliderRow("Отступы по бокам", "hpad", 0, 16, 4, " dp"))
         root.addView(cm3, lp())
+
+        // --- голосовой ввод ---
+        root.addView(section("Голосовой ввод 🎤"))
+        val cmic = card()
+        cmic.addView(choiceRow("Режим", "micmode", listOf("Один раз", "Постоянно", "Удержание"), 0))
+        cmic.addView(tv("Один раз: пишет, пока говоришь, и останавливается на паузе. Постоянно: нажал один раз и пишет даже в тишине, пока не нажмёшь снова. Удержание: пишет, пока держишь кнопку.", 12f, pal.hint).apply { setPadding(0, 0, 0, dp(10)) })
+        cmic.addView(divider(), lp(0, dp(1)))
+        cmic.addView(choiceRow("Где кнопка", "micpos", listOf("Справа от пробела", "Слева от пробела", "Вместо запятой", "Вместо точки", "Вместо глобуса", "Сверху справа"), 0))
+        cmic.addView(divider(), lp(0, dp(1)))
+        cmic.addView(choiceRow("Форма кнопки", "micshape", listOf("Полоска", "Круг", "Печенье", "Как клавиша"), 0))
+        cmic.addView(divider(), lp(0, dp(1)))
+        cmic.addView(choiceRow("Цвет кнопки", "miccolor", listOf("Тональная", "Акцентная", "Как у букв"), 0))
+        cmic.addView(divider(), lp(0, dp(1)))
+        cmic.addView(choiceRow("Значок", "micicon", listOf("Микрофон", "Волна"), 0))
+        cmic.addView(divider(), lp(0, dp(1)))
+        cmic.addView(switchRow("Тихий перезапуск", "Приглушает сигнал распознавателя между фразами", "micquiet", 0, 0))
+        cmic.addView(tv("«Вместо глобуса»: язык тогда меняется долгим нажатием на пробел. «Сверху справа»: приложение открывается долгим нажатием на кнопку.", 12f, pal.hint).apply { setPadding(0, dp(4), 0, dp(10)) })
+        root.addView(cmic, lp())
 
         // --- эффекты после нажатия ---
         root.addView(section("Эффекты нажатия"))

@@ -23,7 +23,7 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
         fun signature(ctx: Context): String {
             val sp = ctx.getSharedPreferences("ui", Context.MODE_PRIVATE)
             val keys = listOf("theme", "height", "radius", "keyalpha", "textsize", "gap", "vibrate", "sound", "bgblur", "bgdim",
-                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "dev", "devrow", "dh", "rainbow", "fxdur", "fxpow", "aggr", "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind", "sugstyle")
+                "font", "shape", "morph", "hints", "bubble", "bpad", "hpad", "hue", "sat", "fxon", "fx", "dev", "devrow", "dh", "rainbow", "fxdur", "fxpow", "aggr", "ny", "nygar", "nyedge", "nysnow", "nyfx", "nytheme", "fall", "fallamt", "fallspd", "fallwind", "sugstyle", "micmode", "micpos", "micshape", "miccolor", "micicon", "micquiet")
             return keys.joinToString(",") { sp.getInt(it, -1).toString() } + "," + BgStore.stamp(ctx)
         }
     }
@@ -47,6 +47,14 @@ class Palette(private val ctx: Context, mode: Int = 0, ignorePhoto: Boolean = fa
 
     // ---- панель подсказок: 0 = капсула, 1 = чипы в стиле ма3 ----
     val sugStyle = sp.getInt("sugstyle", 0).coerceIn(0, 1)
+
+    // ---- голосовой ввод ----
+    val micMode = sp.getInt("micmode", 0).coerceIn(0, 2)     // 0 = до паузы, 1 = постоянно, 2 = пока держишь
+    val micPos = sp.getInt("micpos", 0).coerceIn(0, 5)       // 0 справа от пробела, 1 слева, 2 вместо запятой, 3 вместо точки, 4 вместо глобуса, 5 сверху справа
+    val micShape = sp.getInt("micshape", 0).coerceIn(0, 3)   // 0 полоска, 1 круг, 2 печенье, 3 как клавиша
+    val micColor = sp.getInt("miccolor", 0).coerceIn(0, 2)   // 0 тональная, 1 акцентная, 2 как у букв
+    val micIcon = sp.getInt("micicon", 0).coerceIn(0, 1)     // 0 микрофон, 1 волна
+    val micQuiet = sp.getInt("micquiet", 0) == 0             // приглушать сигнал распознавателя между фразами
 
     // ---- посыпки: 0 = выкл, 1 = снег, 2 = листья, 3 = вода, 4 = весна ----
     val fall = sp.getInt("fall", 0).coerceIn(0, 4)

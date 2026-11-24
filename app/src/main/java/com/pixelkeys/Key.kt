@@ -47,6 +47,8 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     var scallop: Boolean = false      // форма «волнистый квадрат» (бугорки по краям)
     var onTap: () -> Unit = {}
     var onLong: (() -> Unit)? = null
+    var onPress: (() -> Unit)? = null      // в момент касания (для режима «пока держишь»)
+    var onRelease: (() -> Unit)? = null    // когда палец отпустили
 
     private var down = false
     private var longDone = false
@@ -409,6 +411,7 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
                 if (haptic && pal.vibrate) performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 if (haptic && pal.sound) playKeySound()
                 showBubble()
+                onPress?.invoke()
                 if (repeatable) {
                     onTap()
                     ui.postDelayed(repRun, 380)
@@ -427,11 +430,13 @@ class Key(ctx: Context, private val pal: Palette, private val kind: Int = 0) : V
     }
 
     private fun release() {
+        val was = down
         down = false
         animateMorph(0f)
         hideBubble()
         ui.removeCallbacks(longRun)
         ui.removeCallbacks(repRun)
         invalidate()
+        if (was) onRelease?.invoke()
     }
 }
