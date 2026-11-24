@@ -56,6 +56,14 @@ class SettingsActivity : Activity() {
 
     private val liveKeys = setOf("fxon", "morph", "hints", "bubble", "rainbow", "devrow", "ny", "nygar", "nyedge", "nysnow", "nytheme")
     private var cardIdx = 0
+    // обучение при первом запуске: цели для подсветки
+    private var tutorial: Tutorial? = null
+    private var hostRef: FrameLayout? = null
+    private var tutChecked = false
+    private var tutEnable: View? = null
+    private var tutPick: View? = null
+    private var tutPreview: View? = null
+    private var tutVoice: View? = null
     private var spin: android.animation.ObjectAnimator? = null
     private var greetTaps = 0
     private var greetLast = 0L
@@ -486,13 +494,19 @@ class SettingsActivity : Activity() {
         h1.setPadding(0, 0, 0, dp(10))
         hero.addView(h1)
         hero.addView(tv("Умный T9, автоисправление, буфер обмена и 11 тем. Без доступа в интернет: набранное остаётся на телефоне.", 15f, pal.onAction))
-        hero.addView(heroButton("Включить клавиатуру", true) {
+        val btnEnable = heroButton("Включить клавиатуру", true) {
             startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-        }, lp(22, dp(54)))
-        hero.addView(heroButton("Выбрать Pixel Keys", false) {
+        }
+        hero.addView(btnEnable, lp(22, dp(54)))
+        val btnPick = heroButton("Выбрать Pixel Keys", false) {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
-        }, lp(10, dp(54)))
-        hero.addView(previewCard(), lp(20))
+        }
+        hero.addView(btnPick, lp(10, dp(54)))
+        tutEnable = btnEnable
+        tutPick = btnPick
+        val pv = previewCard()
+        tutPreview = pv
+        hero.addView(pv, lp(20))
         // плакат: сплошной яркий блок с огромным названием и вращающимся «печеньем» с логотипом
         val heroFrame = FrameLayout(this)
         heroFrame.background = Ui.glossy(this, pal.action, pal.night, 40)
@@ -658,6 +672,7 @@ class SettingsActivity : Activity() {
         cmic.addView(divider(), lp(0, dp(1)))
         cmic.addView(switchRow("Тихий перезапуск", "Приглушает сигнал распознавателя между фразами", "micquiet", 0, 0))
         cmic.addView(tv("«Вместо глобуса»: язык тогда меняется долгим нажатием на пробел. «Сверху справа»: приложение открывается долгим нажатием на кнопку.", 12f, pal.hint).apply { setPadding(0, dp(4), 0, dp(10)) })
+        tutVoice = cmic
         root.addView(cmic, lp())
 
         // --- эффекты после нажатия ---
@@ -755,6 +770,12 @@ class SettingsActivity : Activity() {
         note.setPadding(0, 0, 0, dp(12))
         c4.addView(note)
         root.addView(c4, lp())
+
+        root.addView(section("Помощь"))
+        val chelp = card()
+        chelp.addView(tv("Короткое обучение: подсветим кнопки и покажем, что где на клавиатуре.", 13f, pal.hint).apply { setPadding(0, dp(10), 0, dp(4)) })
+        chelp.addView(pill("Пройти обучение заново", false) { startTutorial() }, lp(8, dp(52)))
+        root.addView(chelp, lp())
 
         val foot = tv("Pixel Keys · версия $ver", 13f, pal.hint, true)
         foot.gravity = Gravity.CENTER
@@ -934,6 +955,88 @@ class SettingsActivity : Activity() {
         }
         setContentView(host)
         showPage(page)
+        hostRef = host
+        // при первом запуске сразу показываем обучение
+        if (!tutChecked && prefs.getInt("tutdone", 0) == 0) {
+            tutChecked = true
+            host.post { startTutorial() }
+        }
+    }
+
+    private fun scrollToView(v: View) {
+        val sv = scroll ?: return
+        val r = android.graphics.Rect()
+        v.getDrawingRect(r)
+        sv.offsetDescendantRectToMyCoords(v, r)
+        sv.smoothScrollTo(0, maxOf(0, r.top - dp(140)))
+    }
+
+    /** Обучение: подсвечивает кнопки приложения, переключает вкладки и показывает схему клавиатуры. */
+    private fun startTutorial() {
+        val host = hostRef ?: return
+        tutorial?.finish(false)
+        showPage(0)
+        scroll?.scrollTo(0, 0)
+        val steps = listOf(
+            Tutorial.Step("Привет! Это Pixel Keys", "Покажу основное за минуту: подсвечу кнопки, а ты смотри.", primary = "Показать"),
+            Tutorial.Step(
+                "Включи клавиатуру",
+                "Сначала включи её в системных настройках, потом выбери Pixel Keys. Обе кнопки как раз здесь.",
+                targets = { listOfNotNull(tutEnable, tutPick) },
+                enter = { showPage(0); scroll?.smoothScrollTo(0, 0) },
+                delayMs = 550L
+            ),
+            Tutorial.Step(
+                "Мини-клавиатура",
+                "Это превью твоей клавиатуры. Нажимай на клавиши: так видно эффекты, цвета и подсказки. Всё, что меняешь ниже, сразу отражается здесь.",
+                targets = { listOfNotNull(tutPreview) },
+                enter = { tutPreview?.let { scrollToView(it) } },
+                delayMs = 600L
+            ),
+            Tutorial.Step(
+                "Практика",
+                "Тест скорости, слова на время и тест реакции. Проверь клавиатуру в деле и побей свои рекорды.",
+                targets = { listOf(islandItems[1]) },
+                enter = { showPage(1) },
+                delayMs = 220L
+            ),
+            Tutorial.Step(
+                "Посыпки",
+                "Снег, листья, вода или весна: бесконечно и по-разному падают сверху клавиатуры. Количество, скорость и ветер настраиваются.",
+                targets = { listOf(islandItems[2]) },
+                enter = { showPage(2) },
+                delayMs = 220L
+            ),
+            Tutorial.Step(
+                "Пресеты",
+                "10 готовых сборок и 2 пресета эффектов. Один тап, и клавиатура выглядит по-другому.",
+                targets = { listOf(islandItems[3]) },
+                enter = { showPage(3) },
+                delayMs = 220L
+            ),
+            Tutorial.Step(
+                "Голосовой ввод",
+                "На клавиатуре есть кнопка с микрофоном. В режиме «Постоянно» она пишет, пока не нажмёшь снова. Место, форму и цвет кнопки меняешь здесь.",
+                targets = { listOfNotNull(tutVoice) },
+                enter = { showPage(0); tutVoice?.let { scrollToView(it) } },
+                delayMs = 700L
+            ),
+            Tutorial.Step("Что где на клавиатуре", "", diagram = true, delayMs = 120L),
+            Tutorial.Step("Готово!", "Осталось включить клавиатуру и выбрать её. Обучение можно открыть снова внизу экрана «Управление».", primary = "Готово")
+        )
+        val t = Tutorial(this, pal, host, steps) {
+            prefs.edit().putInt("tutdone", 1).apply()
+            showPage(0)
+            scroll?.smoothScrollTo(0, 0)
+        }
+        tutorial = t
+        t.start()
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        val t = tutorial
+        if (t != null && t.isShowing) t.finish(true) else super.onBackPressed()
     }
 
     private fun showPage(p: Int) {
