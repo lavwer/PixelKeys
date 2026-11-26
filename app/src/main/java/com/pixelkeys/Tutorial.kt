@@ -485,7 +485,7 @@ class Tutorial(
                 if (rect.bottom > cardTop - gap) rect.bottom = cardTop - gap
             }
             // если высокий блок почти целиком под карточкой, окно не рисуем
-            if (rect.height() < dp(48) || rect.top >= rect.bottom) rect = null
+            if (rect.height() < dp(48).toFloat() || rect.top >= rect.bottom) rect = null
         }
         spot.setTarget(rect)
         val lp = card.layoutParams as FrameLayout.LayoutParams
