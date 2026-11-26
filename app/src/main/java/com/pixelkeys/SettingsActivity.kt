@@ -43,7 +43,7 @@ class SettingsActivity : Activity() {
     private var scroll: ScrollView? = null
 
     // ---- островок внизу и две страницы: «Управление» и «Практика» ----
-    private var page = 4      // 0 настройки, 1 практика, 2 посыпки, 3 пресеты, 4 главная
+    private var page = 0
     private lateinit var holder: FrameLayout
     private var island: View? = null
     private val islandItems = ArrayList<TextView>()
@@ -52,9 +52,6 @@ class SettingsActivity : Activity() {
     private var practiceView: View? = null
     private var fallView: View? = null
     private var presetsView: View? = null
-    private var homeView: View? = null
-    private var homePage: HomePage? = null
-    private var tutHomeCircle: View? = null
     private var fallDirty = false
 
     private val liveKeys = setOf("fxon", "morph", "hints", "bubble", "rainbow", "devrow", "ny", "nygar", "nyedge", "nysnow", "nytheme")
@@ -934,7 +931,6 @@ class SettingsActivity : Activity() {
         practiceView = null
         fallView = null
         presetsView = null
-        homeView = null
         controlsView = controls
         val host = FrameLayout(this)
         host.setBackgroundColor(pal.surface)
@@ -967,25 +963,6 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /** Ярлыки главного экрана: номера страниц, 100 = голосовой ввод в настройках. */
-    private fun goFromHome(code: Int) {
-        if (code == 100) {
-            showPage(0)
-            tutVoice?.let { v -> v.post { scrollToView(v) } }
-        } else {
-            showPage(code)
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // после возврата из системных настроек обновляем состояние клавиатуры на главной
-        if (::holder.isInitialized && page == 4) {
-            homeView = null
-            showPage(4)
-        }
-    }
-
     private fun scrollToView(v: View) {
         val sv = scroll ?: return
         val r = android.graphics.Rect()
@@ -998,17 +975,10 @@ class SettingsActivity : Activity() {
     private fun startTutorial() {
         val host = hostRef ?: return
         tutorial?.finish(false)
-        showPage(4)
+        showPage(0)
         scroll?.scrollTo(0, 0)
         val steps = listOf(
             Tutorial.Step("Привет! Это Pixel Keys", "Покажу основное за минуту: подсвечу кнопки, а ты смотри.", primary = "Показать"),
-            Tutorial.Step(
-                "Главная",
-                "Большой круг включает клавиатуру: сначала открывает системные настройки, потом выбор клавиатуры, а когда всё готово, ведёт на тренировку. Круглые ярлыки ведут в разделы.",
-                targets = { listOfNotNull(tutHomeCircle) },
-                enter = { showPage(4) },
-                delayMs = 320L
-            ),
             Tutorial.Step(
                 "Включи клавиатуру",
                 "Сначала включи её в системных настройках, потом выбери Pixel Keys. Обе кнопки как раз здесь.",
@@ -1052,11 +1022,11 @@ class SettingsActivity : Activity() {
                 delayMs = 700L
             ),
             Tutorial.Step("Что где на клавиатуре", "", diagram = true, delayMs = 120L),
-            Tutorial.Step("Готово!", "Осталось включить клавиатуру и выбрать её. Обучение можно открыть снова в «Настройках» внизу или в меню с тремя точками на главной.", primary = "Готово")
+            Tutorial.Step("Готово!", "Осталось включить клавиатуру и выбрать её. Обучение можно открыть снова внизу экрана «Управление».", primary = "Готово")
         )
         val t = Tutorial(this, pal, host, steps) {
             prefs.edit().putInt("tutdone", 1).apply()
-            showPage(4)
+            showPage(0)
             scroll?.scrollTo(0, 0)
         }
         tutorial = t
@@ -1093,19 +1063,10 @@ class SettingsActivity : Activity() {
         } else if (p == 2) {
             if (fallView == null) fallView = FallPage(this, pal, prefs) { fallDirty = true }.view()
             holder.addView(fallView)
-        } else if (p == 3) {
+        } else {
             // после применения пресета перерисовываем всё: могла поменяться тема
             if (presetsView == null) presetsView = PresetsPage(this, pal, prefs) { window.decorView.post { render() } }.view()
             holder.addView(presetsView)
-        } else {
-            if (fallDirty) homeView = null
-            if (homeView == null) {
-                val hp = HomePage(this, pal, prefs, { code -> goFromHome(code) }, { homePage?.showMenu { startTutorial() } })
-                homePage = hp
-                homeView = hp.view()
-                tutHomeCircle = hp.circle
-            }
-            holder.addView(homeView)
         }
         // выразительное появление страницы: плавно и с лёгким перелётом
         val shown = holder.getChildAt(0)
@@ -1118,10 +1079,9 @@ class SettingsActivity : Activity() {
         updateIsland()
     }
 
-    // порядок вкладок: главная, настройки, практика, посыпки, пресеты
-    private val islandIcons = listOf("🏠", "⚙️", "🎮", "✨", "🎨")
-    private val islandLabels = listOf("Главная", "Настройки", "Практика", "Посыпки", "Пресеты")
-    private val islandPages = listOf(4, 0, 1, 2, 3)
+    private val islandIcons = listOf("⚙️", "🎮", "✨", "🎨")
+    private val islandLabels = listOf("Управление", "Практика", "Посыпки", "Пресеты")
+    private val islandPages = listOf(0, 1, 2, 3)
 
     private fun itemFor(p: Int): View = islandItems[islandPages.indexOf(p)]
 
@@ -1147,29 +1107,26 @@ class SettingsActivity : Activity() {
         return box
     }
 
-    /** Выбранная вкладка: значок и подпись в яркой капсуле. У остальных только значок, чтобы пять вкладок влезли. */
+    /** Значок сверху, подпись под ним; выбранный пункт лежит в яркой капсуле. */
     private fun updateIsland() {
         for (i in islandItems.indices) {
             val t = islandItems[i]
             val sel = islandPages[i] == page
-            if (sel) {
-                val sp = android.text.SpannableString(islandIcons[i] + "\n" + islandLabels[i])
-                sp.setSpan(android.text.style.RelativeSizeSpan(0.62f), islandIcons[i].length, sp.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                t.text = sp
-                t.minWidth = dp(82)
-                t.setPadding(dp(8), dp(6), dp(8), dp(6))
-                t.background = Ui.raised(this, pal.action, pal.night, 28)
-                t.setTextColor(pal.onAction)
-            } else {
-                t.text = islandIcons[i]
-                t.minWidth = dp(52)
-                t.setPadding(dp(6), dp(6), dp(6), dp(6))
-                t.background = null
-                t.setTextColor(if (pal.night) pal.hint else Ui.mix(Color.WHITE, pal.text, 0.25f))
-            }
+            val sp = android.text.SpannableString(islandIcons[i] + "\n" + islandLabels[i])
+            sp.setSpan(android.text.style.RelativeSizeSpan(0.62f), islandIcons[i].length, sp.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            t.text = sp
+            t.minWidth = dp(72)
+            t.setPadding(dp(6), dp(6), dp(6), dp(6))
             t.textSize = 20f
             t.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             t.setLineSpacing(0f, 0.95f)
+            if (sel) {
+                t.background = Ui.raised(this, pal.action, pal.night, 28)
+                t.setTextColor(pal.onAction)
+            } else {
+                t.background = null
+                t.setTextColor(if (pal.night) pal.hint else Ui.mix(Color.WHITE, pal.text, 0.25f))
+            }
         }
     }
 

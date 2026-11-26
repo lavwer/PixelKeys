@@ -461,12 +461,37 @@ class Tutorial(
             if (rect == null) rect = r else rect.union(r)
         }
         if (rect != null) rect.inset(-dp(10).toFloat(), -dp(10).toFloat())
+
+        // высоту карточки считаем заранее: она должна встать туда, где больше места, и не перекрыть подсвеченное
+        val rootH = root.height
+        card.measure(
+            View.MeasureSpec.makeMeasureSpec(root.width - dp(28), View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(rootH, View.MeasureSpec.AT_MOST)
+        )
+        val ch = card.measuredHeight
+        val gap = dp(12)
+        val topM = dp(36)
+        val botM = dp(24)
+        var atTop = false
+        if (rect != null) {
+            val spaceBelow = rootH - rect.bottom - botM
+            val spaceAbove = rect.top - topM
+            atTop = if (spaceBelow >= ch + gap) false else if (spaceAbove >= ch + gap) true else spaceAbove > spaceBelow
+            if (atTop) {
+                val cardBottom = topM + ch
+                if (rect.top < cardBottom + gap) rect.top = cardBottom + gap
+            } else {
+                val cardTop = rootH - botM - ch
+                if (rect.bottom > cardTop - gap) rect.bottom = cardTop - gap
+            }
+            // если высокий блок почти целиком под карточкой, окно не рисуем
+            if (rect.height() < dp(48) || rect.top >= rect.bottom) rect = null
+        }
         spot.setTarget(rect)
-        val atTop = rect != null && rect.centerY() > root.height * 0.52f
         val lp = card.layoutParams as FrameLayout.LayoutParams
         lp.gravity = if (rect == null) Gravity.CENTER_VERTICAL else if (atTop) Gravity.TOP else Gravity.BOTTOM
-        lp.topMargin = dp(36)
-        lp.bottomMargin = dp(24)
+        lp.topMargin = topM
+        lp.bottomMargin = botM
         card.layoutParams = lp
         card.alpha = 0f
         card.translationY = (if (atTop) -dp(22) else dp(22)).toFloat()
