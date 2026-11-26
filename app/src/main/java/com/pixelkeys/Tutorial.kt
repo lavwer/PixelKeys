@@ -474,15 +474,20 @@ class Tutorial(
         val botM = dp(24)
         var atTop = false
         if (rect != null) {
-            val spaceBelow = rootH - rect.bottom - botM
-            val spaceAbove = rect.top - topM
-            atTop = if (spaceBelow >= ch + gap) false else if (spaceAbove >= ch + gap) true else spaceAbove > spaceBelow
+            val fRootH = rootH.toFloat()
+            val fBotM = botM.toFloat()
+            val fTopM = topM.toFloat()
+            val fCh = ch.toFloat()
+            val fGap = gap.toFloat()
+            val spaceBelow = fRootH - rect.bottom - fBotM
+            val spaceAbove = rect.top - fTopM
+            atTop = if (spaceBelow >= fCh + fGap) false else if (spaceAbove >= fCh + fGap) true else spaceAbove > spaceBelow
             if (atTop) {
-                val cardBottom = topM + ch
-                if (rect.top < cardBottom + gap) rect.top = cardBottom + gap
+                val cardBottom = fTopM + fCh
+                if (rect.top < cardBottom + fGap) rect.top = cardBottom + fGap
             } else {
-                val cardTop = rootH - botM - ch
-                if (rect.bottom > cardTop - gap) rect.bottom = cardTop - gap
+                val cardTop = fRootH - fBotM - fCh
+                if (rect.bottom > cardTop - fGap) rect.bottom = cardTop - fGap
             }
             // если высокий блок почти целиком под карточкой, окно не рисуем
             if (rect.height() < dp(48).toFloat() || rect.top >= rect.bottom) rect = null
